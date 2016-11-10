@@ -348,14 +348,17 @@ def bulk_data_based(num_clients, client_index, indices, action_metadata, batch_s
             else:
                 logger.info("Client [%d] skips [%s/%s] (no documents to read)." % (client_index, index, type))
     reader = chain(*readers)
+    id = 0
     for index, type, batch in reader:
         # each batch can contain of one or more bulks
         for bulk in batch:
+            id += 1
             params = {
                 "index": index,
                 "type": type,
                 "action_metadata": action_metadata,
-                "body": bulk
+                "body": bulk,
+                "id": id
             }
             if pipeline:
                 params["pipeline"] = pipeline
