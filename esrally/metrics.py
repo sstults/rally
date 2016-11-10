@@ -3,6 +3,9 @@ import datetime
 import logging
 import math
 import statistics
+import bz2
+import pickle
+import sys
 from enum import Enum, IntEnum
 
 import certifi
@@ -685,13 +688,15 @@ class InMemoryMetricsStore(MetricsStore):
         pass
 
     def to_externalizable(self):
-        return InMemoryMetricsStore.DOCS
+        compressed = bz2.compress(pickle.dumps(InMemoryMetricsStore.DOCS))
+        logger.info("Reduced size of metric store from [%d] bytes to [%d] bytes" % (sys.getsizeof(InMemoryMetricsStore.DOCS), sys.getsizeof(compressed)))
+        return compressed
 
     def bulk_add(self, docs):
         if docs == InMemoryMetricsStore.DOCS:
             return
         else:
-            for doc in docs:
+            for doc in pickle.loads(bz2.decompress(docs)):
                 self._add(doc)
 
     def get_percentiles(self, name, operation=None, operation_type=None, sample_type=None, lap=None, percentiles=None):

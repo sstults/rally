@@ -175,6 +175,17 @@ class BulkIndexParamSource(ParamSource):
             self.id_conflicts = IndexIdConflict.RandomConflicts
         else:
             raise exceptions.InvalidSyntax("Unknown index id conflict type [%s]." % id_conflicts)
+
+        self.action_metadata = params.get("action-and-meta-data", "generate")
+        valid_action_metadata_options = ["none", "generate", "sourcefile"]
+        if self.action_metadata not in valid_action_metadata_options:
+            raise exceptions.InvalidSyntax("'action-and-meta-data' is set to '%s' but only one of %s is allowed."
+                                           % (self.action_metadata, valid_action_metadata_options))
+
+        if self.action_metadata == "generate" and self.id_conflicts != IndexIdConflict.NoConflicts:
+            raise exceptions.InvalidSyntax("Cannot generate id conflicts (%s) when 'action-and-meta-data' is '%s'." %
+                                           (self.id_conflicts.name, self.action_metadata))
+
         self.pipeline = params.get("pipeline", None)
         try:
             self.bulk_size = int(params["bulk-size"])
@@ -185,9 +196,20 @@ class BulkIndexParamSource(ParamSource):
         except ValueError:
             raise exceptions.InvalidSyntax("'bulk-size' must be numeric")
 
+        try:
+            self.batch_size = int(params.get("batch-size", self.bulk_size))
+            if self.batch_size <= 0:
+                raise exceptions.InvalidSyntax("'batch-size' must be positive but was %d" % self.batch_size)
+            if self.batch_size < self.bulk_size:
+                raise exceptions.InvalidSyntax("'batch-size' must be greater than or equal to 'bulk-size'")
+            if self.batch_size % self.bulk_size != 0:
+                raise exceptions.InvalidSyntax("'batch-size' must be a multiple of 'bulk-size'")
+        except ValueError:
+            raise exceptions.InvalidSyntax("'batch-size' must be numeric")
+
     def partition(self, partition_index, total_partitions):
-        return PartitionBulkIndexParamSource(self.indices, partition_index, total_partitions, self.bulk_size, self.id_conflicts,
-                                             self.pipeline)
+        return PartitionBulkIndexParamSource(self.indices, partition_index, total_partitions, self.action_metadata,
+                                             self.batch_size, self.bulk_size, self.id_conflicts, self.pipeline)
 
     def params(self):
         raise exceptions.RallyError("Do not use a BulkIndexParamSource without partitioning")
@@ -197,12 +219,15 @@ class BulkIndexParamSource(ParamSource):
 
 
 class PartitionBulkIndexParamSource(ParamSource):
-    def __init__(self, indices, partition_index, total_partitions, bulk_size, id_conflicts=None, pipeline=None):
+    def __init__(self, indices, partition_index, total_partitions, action_metadata, batch_size, bulk_size, id_conflicts=None,
+                 pipeline=None):
         """
 
         :param indices: Specification of affected indices.
         :param partition_index: The current partition index.  Must be in the range [0, `total_partitions`).
         :param total_partitions: The total number of partitions (i.e. clietns) for bulk index operations.
+        :param action_metadata: Specifies how to treat the action and meta-data line for the bulk request.
+        :param batch_size: The number of documents to read in one go.
         :param bulk_size: The size of bulk index operations (number of documents per bulk).
         :param id_conflicts: The type of id conflicts.
         :param pipeline: The name of the ingest pipeline to run.
@@ -210,10 +235,12 @@ class PartitionBulkIndexParamSource(ParamSource):
         super().__init__(indices, {})
         self.partition_index = partition_index
         self.total_partitions = total_partitions
+        self.batch_size = batch_size
         self.bulk_size = bulk_size
         self.id_conflicts = id_conflicts
         self.pipeline = pipeline
-        self.internal_params = bulk_data_based(total_partitions, partition_index, indices, bulk_size, id_conflicts, pipeline)
+        self.internal_params = bulk_data_based(total_partitions, partition_index, indices, action_metadata, batch_size,
+                                               bulk_size, id_conflicts, pipeline)
 
     def partition(self, partition_index, total_partitions):
         raise exceptions.RallyError("Cannot partition a PartitionBulkIndexParamSource further")
@@ -267,9 +294,9 @@ def chain(*iterables):
                 yield element
 
 
-def create_default_reader(index, type, offset, num_docs, bulk_size, id_conflicts):
-    return IndexDataReader(type.document_file, num_docs,
-                           build_conflicting_ids(id_conflicts, num_docs, offset), index.name, type.name, bulk_size, offset)
+def create_default_reader(index, type, offset, num_docs, action_metadata, batch_size, bulk_size, id_conflicts):
+    return IndexDataReader(type.document_file, num_docs, action_metadata == "generate",
+                           build_conflicting_ids(id_conflicts, num_docs, offset), index.name, type.name, batch_size, bulk_size, offset)
 
 
 def bounds(total_docs, client_index, num_clients):
@@ -293,13 +320,16 @@ def bounds(total_docs, client_index, num_clients):
     return offset, docs_per_client
 
 
-def bulk_data_based(num_clients, client_index, indices, bulk_size, id_conflicts, pipeline, create_reader=create_default_reader):
+def bulk_data_based(num_clients, client_index, indices, action_metadata, batch_size, bulk_size, id_conflicts, pipeline,
+                    create_reader=create_default_reader):
     """
     Calculates the necessary schedule for bulk operations.
 
     :param num_clients: The total number of clients that will run the bulk operation.
     :param client_index: The current client for which we calculated the schedule. Must be in the range [0, `num_clients').
     :param indices: Specification of affected indices.
+    :param action_metadata: Specifies how to treat the action and meta-data line for the bulk request.
+    :param batch_size: The number of documents to read in one go.
     :param bulk_size: The size of bulk index operations (number of documents per bulk).
     :param id_conflicts: The type of id conflicts to simulate.
     :param pipeline: Name of the ingest pipeline to use. May be None.
@@ -307,7 +337,6 @@ def bulk_data_based(num_clients, client_index, indices, bulk_size, id_conflicts,
                           intended for testing only.
     :return: A generator for the bulk operations of the given client.
     """
-
     readers = []
     for index in indices:
         for type in index.types:
@@ -315,15 +344,22 @@ def bulk_data_based(num_clients, client_index, indices, bulk_size, id_conflicts,
             if num_docs > 0:
                 logger.info("Client [%d] will index [%d] docs starting from offset [%d] for [%s/%s]" %
                             (client_index, num_docs, offset, index, type))
-                readers.append(create_reader(index, type, offset, num_docs, bulk_size, id_conflicts))
+                readers.append(create_reader(index, type, offset, num_docs, action_metadata, batch_size, bulk_size, id_conflicts))
             else:
                 logger.info("Client [%d] skips [%s/%s] (no documents to read)." % (client_index, index, type))
     reader = chain(*readers)
-    for bulk in reader:
-        params = {"body": bulk}
-        if pipeline:
-            params["pipeline"] = pipeline
-        yield params
+    for index, type, batch in reader:
+        # each batch can contain of one or more bulks
+        for bulk in batch:
+            params = {
+                "index": index,
+                "type": type,
+                "action_metadata": action_metadata,
+                "body": bulk
+            }
+            if pipeline:
+                params["pipeline"] = pipeline
+            yield params
 
 
 class FileSource:
@@ -350,15 +386,18 @@ class IndexDataReader:
     Reads an index file in bulks into an array and also adds the necessary meta-data line before each document.
     """
 
-    def __init__(self, data_file, docs_to_index, conflicting_ids, index_name, type_name, bulk_size, offset=0, file_source=FileSource):
+    def __init__(self, data_file, docs_to_index, generate_action_metadata, conflicting_ids, index_name, type_name, batch_size, bulk_size,
+                 offset=0, file_source=FileSource):
         self.data_file = data_file
         self.docs_to_index = docs_to_index
         self.conflicting_ids = conflicting_ids
         self.index_name = index_name
         self.type_name = type_name
+        self.batch_size = batch_size
         self.bulk_size = bulk_size
+        self.generate_action_metadata = generate_action_metadata
         self.id_up_to = 0
-        self.current_bulk = 0
+        self.current_batch = 0
         self.offset = offset
         self.file_source = file_source
         self.f = None
@@ -378,41 +417,48 @@ class IndexDataReader:
 
     def __next__(self):
         """
-        Returns lines for one bulk request.
+        Returns lines for N bulk requests (where N is bulk_size / batch_size)
         """
-        buffer = []
+        bulks = []
         try:
             docs_indexed = 0
-            docs_left = self.docs_to_index - (self.current_bulk * self.bulk_size)
+            docs_left = self.docs_to_index - (self.current_batch * self.batch_size)
             if self.f is None or docs_left <= 0:
                 raise StopIteration()
 
-            this_bulk_size = min(self.bulk_size, docs_left)
-            while docs_indexed < this_bulk_size:
+            this_batch_size = min(self.batch_size, docs_left)
+            while docs_indexed < this_batch_size:
+                if docs_indexed % self.bulk_size == 0:
+                    current_bulk = []
+                    bulks.append(current_bulk)
+
                 line = self.f.readline()
                 if len(line) == 0:
                     break
                 line = line.strip()
-                if self.conflicting_ids is not None:
-                    # 25% of the time we replace a doc:
-                    if self.id_up_to > 0 and random.randint(0, 3) == 3:
-                        doc_id = self.conflicting_ids[random.randint(0, self.id_up_to - 1)]
-                    else:
-                        doc_id = self.conflicting_ids[self.id_up_to]
-                        self.id_up_to += 1
-                    cmd = '{"index": {"_index": "%s", "_type": "%s", "_id": "%s"}}' % (self.index_name, self.type_name, doc_id)
-                else:
-                    cmd = '{"index": {"_index": "%s", "_type": "%s"}}' % (self.index_name, self.type_name)
+                if self.generate_action_metadata:
+                    current_bulk.append(self.action_meta_data_line())
 
-                buffer.append(cmd)
-                buffer.append(line)
-
+                current_bulk.append(line)
                 docs_indexed += 1
-
-            self.current_bulk += 1
-            return buffer
+            self.current_batch += 1
+            logger.debug("Returning a batch with %d bulks." % len(bulks))
+            return self.index_name, self.type_name, bulks
         except IOError:
             logger.exception("Could not read [%s]" % self.data_file)
+
+    def action_meta_data_line(self):
+        if self.conflicting_ids is not None:
+            # 25% of the time we replace a doc:
+            if self.id_up_to > 0 and random.randint(0, 3) == 3:
+                doc_id = self.conflicting_ids[random.randint(0, self.id_up_to - 1)]
+            else:
+                doc_id = self.conflicting_ids[self.id_up_to]
+                self.id_up_to += 1
+            cmd = '{"index": {"_index": "%s", "_type": "%s", "_id": "%s"}}' % (self.index_name, self.type_name, doc_id)
+        else:
+            cmd = '{"index": {"_index": "%s", "_type": "%s"}}' % (self.index_name, self.type_name)
+        return cmd
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.f:
@@ -423,3 +469,6 @@ class IndexDataReader:
 
 register_param_source_for_operation(track.OperationType.Index, BulkIndexParamSource)
 register_param_source_for_operation(track.OperationType.Search, SearchParamSource)
+
+# Also register by name, so users can use it too
+register_param_source_for_name("file-reader", BulkIndexParamSource)
