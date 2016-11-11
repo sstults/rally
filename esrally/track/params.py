@@ -354,7 +354,6 @@ def bulk_data_based(num_clients, client_index, indices, action_metadata, batch_s
         # each batch can contain of one or more bulks
         for bulk in batch:
             id += 1
-            print("BULK: %s" % bulk)
             params = {
                 "index": index,
                 "type": type,
