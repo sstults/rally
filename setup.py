@@ -1,9 +1,11 @@
 from os.path import join, dirname
+
 try:
     from setuptools import setup, find_packages
 except ImportError:
     print("*** Could not find setuptools. Did you install pip3? *** \n\n")
     raise
+
 
 def str_from_file(name):
     with open(join(dirname(__file__), name)) as f:
@@ -26,6 +28,8 @@ install_requires = [
     "Jinja2==2.8",
     # remote messaging
     "thespian==3.0.4",
+    # recommended library for thespian to identify actors more easily with `ps`
+    # "setproctitle"
     # always use the latest version, these are certificate files...
     "certifi"
 ]
@@ -46,7 +50,7 @@ setup(name="esrally",
           exclude=("tests*",)
       ),
       include_package_data=True,
-      package_data={"": ["*.json"]},
+      package_data={"": ["*.json", "*.yml"]},
       install_requires=install_requires,
       test_suite="tests",
       tests_require=tests_require,

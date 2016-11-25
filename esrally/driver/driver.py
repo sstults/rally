@@ -180,10 +180,9 @@ class Driver(thespian.actors.Actor):
         self.metrics_store.open(invocation, track_name, challenge_name, selected_car_name)
 
         challenge = select_challenge(self.config, current_track)
-        es_version = self.config.opts("source", "distribution.version")
         for index in current_track.indices:
             setup_index(self.es, index, challenge.index_settings)
-        wait_for_status(self.es, es_version, expected_cluster_health)
+        wait_for_status(self.es, expected_cluster_health)
         allocator = Allocator(challenge.schedule)
         self.allocations = allocator.allocations
         self.number_of_steps = len(allocator.join_points) - 1
@@ -407,7 +406,7 @@ class Sampler:
                                      sample_type, request_meta_data, latency_ms, service_time_ms, total_ops, total_ops_unit, time_period,
                                      percent_completed))
         except queue.Full:
-            logger.warn("Dropping sample for [%s] due to a full sampling queue." % self.operation.name)
+            logger.warning("Dropping sample for [%s] due to a full sampling queue." % self.operation.name)
 
     @property
     def samples(self):
@@ -449,7 +448,7 @@ def select_challenge(config, t):
 def setup_index(es, index, index_settings, source=io.FileSource):
     if index.auto_managed:
         if es.indices.exists(index=index.name):
-            logger.warn("Index [%s] already exists. Deleting it." % index.name)
+            logger.warning("Index [%s] already exists. Deleting it." % index.name)
             es.indices.delete(index=index.name)
         logger.info("Creating index [%s]" % index.name)
         es.indices.create(index=index.name, body=index_settings)
@@ -464,27 +463,26 @@ def setup_index(es, index, index_settings, source=io.FileSource):
         logger.info("Skipping index [%s] as it is managed by the user." % index.name)
 
 
-def wait_for_status(es, es_version, expected_cluster_status):
+def wait_for_status(es, expected_cluster_status):
     """
     Synchronously waits until the cluster reaches the provided status. Upon timeout a LaunchError is thrown.
 
     :param es Elasticsearch client
-    :param es_version Elasticsearch version string.
     :param expected_cluster_status the cluster status that should be reached.
     """
     logger.info("Wait for cluster status [%s]" % expected_cluster_status)
     start = time.perf_counter()
-    reached_cluster_status, relocating_shards = _do_wait(es, es_version, expected_cluster_status)
+    reached_cluster_status, relocating_shards = _do_wait(es, expected_cluster_status)
     stop = time.perf_counter()
     logger.info("Cluster reached status [%s] within [%.1f] sec." % (reached_cluster_status, (stop - start)))
     logger.info("Cluster health: [%s]" % str(es.cluster.health()))
     logger.info("Shards:\n%s" % es.cat.shards(v=True))
 
 
-def _do_wait(es, es_version, expected_cluster_status):
+def _do_wait(es, expected_cluster_status):
     reached_cluster_status = None
     relocating_shards = -1
-    major, minor, patch, suffix = versions.components(es_version)
+    major, minor, patch, suffix = versions.components(es.info()["version"]["number"])
     if major < 5:
         use_wait_for_relocating_shards = True
     elif major == 5 and minor == 0 and patch == 0 and suffix and suffix.startswith("alpha"):

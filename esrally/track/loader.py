@@ -253,7 +253,7 @@ class TrackRepository:
                 else:
                     msg = "Could not find track data remotely for distribution version [%s]. " \
                           "Trying to find track data locally." % distribution_version
-                    logger.warn(msg)
+                    logger.warning(msg)
             branch = versions.best_match(git.branches(self.tracks_dir, remote=False), distribution_version)
             if branch:
                 logger.info("Checking out [%s] in [%s] for distribution version [%s]." % (branch, self.tracks_dir, distribution_version))

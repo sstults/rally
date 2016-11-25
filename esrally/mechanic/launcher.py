@@ -26,15 +26,8 @@ class DockerLauncher:
         self.client_factory = client_factory_class
 
     def start(self, car):
-        # hardcoded for the moment, should actually be identical to internal launcher
-        # Only needed on Mac:
-        # hosts = [{"host": process.run_subprocess_with_output("docker-machine ip default")[0].strip(), "port": 9200}]
-        hosts = [{"host": "localhost", "port": 9200}]
-        client_options = self.cfg.opts("launcher", "client.options")
-        # unified client config
-        self.cfg.add(config.Scope.benchmark, "client", "hosts", hosts)
-        self.cfg.add(config.Scope.benchmark, "client", "options", client_options)
-
+        hosts = self.cfg.opts("client", "hosts")
+        client_options = self.cfg.opts("client", "options")
         es = self.client_factory(hosts, client_options).create()
 
         t = telemetry.Telemetry(self.cfg, devices=[
@@ -71,7 +64,7 @@ class DockerLauncher:
         with open(docker_cfg_path, "wt") as f:
             f.write(docker_cfg)
 
-        c = cluster.Cluster([], t)
+        c = cluster.Cluster(hosts, [], t)
 
         self._start_process(cmd="docker-compose -f %s up" % docker_cfg_path, node_name="rally0")
         # Wait for a little while: Plugins may still be initializing although the node has already started.
@@ -112,7 +105,7 @@ class DockerLauncher:
             l = l.rstrip()
 
             if l.find("Initialization Failed") != -1:
-                logger.warn("[%s] has started with initialization errors." % node_name)
+                logger.warning("[%s] has started with initialization errors." % node_name)
                 startup_event.set()
 
             logger.info("%s: %s" % (node_name, l.replace("\n", "\n%s (stdout): " % node_name)))
@@ -177,13 +170,8 @@ the index size).
 
     def start(self, car=None):
         console.println(ExternalLauncher.BOGUS_RESULTS_WARNING)
-
-        hosts = self.cfg.opts("launcher", "external.target.hosts")
-        client_options = self.cfg.opts("launcher", "client.options")
-        # unified client config
-        self.cfg.add(config.Scope.benchmark, "client", "hosts", hosts)
-        self.cfg.add(config.Scope.benchmark, "client", "options", client_options)
-
+        hosts = self.cfg.opts("client", "hosts")
+        client_options = self.cfg.opts("client", "options")
         es = self.client_factory(hosts, client_options).create()
 
         t = telemetry.Telemetry(self.cfg, devices=[
@@ -191,7 +179,7 @@ the index size).
             telemetry.NodeStats(self.cfg, es, self.metrics_store),
             telemetry.IndexStats(self.cfg, es, self.metrics_store)
         ])
-        c = cluster.Cluster([], t)
+        c = cluster.Cluster(hosts, [], t)
         user_defined_version = self.cfg.opts("source", "distribution.version", mandatory=False)
         distribution_version = es.info()["version"]["number"]
         if not user_defined_version or user_defined_version.strip() == "":
@@ -247,13 +235,8 @@ class InProcessLauncher:
         self._servers = []
 
     def start(self, car):
-        port = self.cfg.opts("provisioning", "node.http.port")
-        hosts = [{"host": "localhost", "port": port}]
-        client_options = self.cfg.opts("launcher", "client.options")
-        # unified client config
-        self.cfg.add(config.Scope.benchmark, "client", "hosts", hosts)
-        self.cfg.add(config.Scope.benchmark, "client", "options", client_options)
-
+        hosts = self.cfg.opts("client", "hosts")
+        client_options = self.cfg.opts("client", "options")
         es = client.EsClientFactory(hosts, client_options).create()
 
         # we're very specific which nodes we kill as there is potentially also an Elasticsearch based metrics store running on this machine
@@ -273,7 +256,7 @@ class InProcessLauncher:
         ]
 
         t = telemetry.Telemetry(self.cfg, devices=cluster_telemetry)
-        c = cluster.Cluster([self._start_node(node, car, es) for node in range(car.nodes)], t)
+        c = cluster.Cluster(hosts, [self._start_node(node, car, es) for node in range(car.nodes)], t)
         t.attach_to_cluster(c)
         return c
 
@@ -399,7 +382,7 @@ class InProcessLauncher:
             l = l.rstrip()
 
             if l.find("Initialization Failed") != -1:
-                logger.warn("[%s] has started with initialization errors." % node_name)
+                logger.warning("[%s] has started with initialization errors." % node_name)
                 startup_event.set()
 
             logger.info("%s: %s" % (node_name, l.replace("\n", "\n%s (stdout): " % node_name)))
@@ -424,11 +407,11 @@ class InProcessLauncher:
                 logger.info("Done shutdown node (%.1f sec)" % stop_watch.split_time())
             except subprocess.TimeoutExpired:
                 # kill -9
-                logger.warn("Server %s did not shut down itself after 10 seconds; now kill -QUIT node, to see threads:" % node.node_name)
+                logger.warning("Server %s did not shut down itself after 10 seconds; now kill -QUIT node, to see threads:" % node.node_name)
                 try:
                     os.kill(process.pid, signal.SIGQUIT)
                 except OSError:
-                    logger.warn("  no such process")
+                    logger.warning("  no such process")
                     return
 
                 try:
@@ -442,6 +425,6 @@ class InProcessLauncher:
                 try:
                     process.kill()
                 except ProcessLookupError:
-                    logger.warn("No such process")
+                    logger.warning("No such process")
         cluster.telemetry.detach_from_cluster(cluster)
         self._servers = []

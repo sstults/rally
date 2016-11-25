@@ -294,7 +294,7 @@ class PerfStat(TelemetryDevice):
         try:
             self.process.wait(10.0)
         except subprocess.TimeoutExpired:
-            logger.warn("perf stat did not terminate")
+            logger.warning("perf stat did not terminate")
         self.log.close()
 
 
@@ -361,7 +361,7 @@ class DiskIo(InternalTelemetryDevice):
             if self.process_start:
                 logger.info("Using more accurate process-based I/O counters.")
             else:
-                logger.warn("Process I/O counters are unsupported on this platform. Falling back to less accurate disk I/O counters.")
+                logger.warning("Process I/O counters are unsupported on this platform. Falling back to less accurate disk I/O counters.")
 
     def on_benchmark_stop(self):
         if self.process is not None:
@@ -463,8 +463,10 @@ class EnvironmentInfo(InternalTelemetryDevice):
         distribution_version = self.client.info()["version"]["number"]
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "source_revision", revision)
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "distribution_version", distribution_version)
-        self.cfg.add(config.Scope.benchmark, "meta", "source.revision", revision)
-        self.cfg.add(config.Scope.benchmark, "source", "distribution.version", distribution_version)
+
+        cluster.distribution_version = distribution_version
+        cluster.source_revision = revision
+
         info = self.client.nodes.info(node_id="_all")
         nodes_info = info["nodes"].values()
         for node in nodes_info:
@@ -501,7 +503,9 @@ class ExternalEnvironmentInfo(InternalTelemetryDevice):
         distribution_version = self.client.info()["version"]["number"]
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "source_revision", revision)
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "distribution_version", distribution_version)
-        self.cfg.add(config.Scope.benchmark, "meta", "source.revision", revision)
+
+        cluster.distribution_version = distribution_version
+        cluster.source_revision = revision
 
         stats = self.client.nodes.stats(metric="_all")
         nodes = stats["nodes"]
@@ -532,7 +536,7 @@ class ExternalEnvironmentInfo(InternalTelemetryDevice):
             for k in path:
                 value = value[k]
         except KeyError:
-            logger.warn("Could not determine metric [%s] for node [%s] at path [%s]." % (metric_key, node_name, ",".join(path)))
+            logger.warning("Could not determine metric [%s] for node [%s] at path [%s]." % (metric_key, node_name, ",".join(path)))
             value = "unknown"
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.node, node_name, metric_key, value)
 
@@ -566,7 +570,7 @@ class NodeStats(InternalTelemetryDevice):
                 self.metrics_store.put_value_node_level(node_name, "node_young_gen_gc_time", young_gc_time, "ms")
                 self.metrics_store.put_value_node_level(node_name, "node_old_gen_gc_time", old_gc_time, "ms")
             else:
-                logger.warn("Cannot determine GC times for node [%s]. It was not part of the cluster at the start of the benchmark.")
+                logger.warning("Cannot determine GC times for node [%s]. It was not part of the cluster at the start of the benchmark.")
 
         self.metrics_store.put_value_cluster_level("node_total_young_gen_gc_time", total_young_gen_collection_time, "ms")
         self.metrics_store.put_value_cluster_level("node_total_old_gen_gc_time", total_old_gen_collection_time, "ms")
@@ -630,7 +634,7 @@ class IndexStats(InternalTelemetryDevice):
                 value = value[k]
             return value
         except KeyError:
-            logger.warn("Could not determine value at path [%s]." % ",".join(path))
+            logger.warning("Could not determine value at path [%s]." % ",".join(path))
             return None
 
 

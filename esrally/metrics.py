@@ -263,6 +263,10 @@ class MetricsStore:
         """
         return self._meta_info
 
+    @meta_info.setter
+    def meta_info(self, meta_info):
+        self._meta_info = meta_info
+
     def put_count_cluster_level(self, name, count, unit=None, operation=None, operation_type=None, sample_type=SampleType.Normal,
                                 absolute_time=None, relative_time=None, meta_data=None):
         """
@@ -812,11 +816,49 @@ def list_races(cfg):
         console.println("No recent races found.")
 
 
-class InMemoryRaceStore:
+class RaceStore:
     def __init__(self, config):
         self.config = config
+        self.environment_name = config.opts("system", "env.name")
+        self.trial_timestamp = config.opts("meta", "time.start")
+        self.current_race = None
 
-    def store_race(self, t):
+    def store_race(self, track, hosts, revision, distribution_version):
+        laps = self.config.opts("benchmarks", "laps")
+
+        selected_challenge = {}
+        for challenge in track.challenges:
+            if challenge.name == self.config.opts("benchmarks", "challenge"):
+                selected_challenge["name"] = challenge.name
+                selected_challenge["operations"] = []
+                for tasks in challenge.schedule:
+                    for task in tasks:
+                        selected_challenge["operations"].append(task.operation.name)
+        doc = {
+            "environment": self.environment_name,
+            "trial-timestamp": time.to_iso8601(self.trial_timestamp),
+            "pipeline": self.config.opts("system", "pipeline"),
+            "revision": revision,
+            "distribution-version": distribution_version,
+            "laps": laps,
+            "track": track.name,
+            "selected-challenge": selected_challenge,
+            "car": self.config.opts("benchmarks", "car"),
+            "target-hosts": ["%s:%s" % (i["host"], i["port"]) for i in hosts],
+            "user-tag": self.config.opts("system", "user.tag")
+        }
+        self.current_race = Race(doc)
+        self._store(doc)
+
+    def _store(self, doc):
+        raise NotImplementedError("abstract method")
+
+
+class InMemoryRaceStore(RaceStore):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def _store(self, doc):
         pass
 
     def list(self):
@@ -826,53 +868,25 @@ class InMemoryRaceStore:
         return None
 
 
-class EsRaceStore:
+class EsRaceStore(RaceStore):
     RACE_DOC_TYPE = "races"
 
-    def __init__(self,
-                 config,
-                 client_factory_class=EsClientFactory,
-                 index_template_provider_class=IndexTemplateProvider):
+    def __init__(self, config, client_factory_class=EsClientFactory, index_template_provider_class=IndexTemplateProvider):
         """
         Creates a new metrics store.
 
         :param config: The config object. Mandatory.
         :param client_factory_class: This parameter is optional and needed for testing.
         """
-        self.config = config
-        self.environment_name = config.opts("system", "env.name")
+        super().__init__(config)
         self.client = client_factory_class(config).create()
         self.index_template_provider = index_template_provider_class(config)
 
-    def store_race(self, t):
+    def _store(self, doc):
         # always update the mapping to the latest version
         self.client.put_template("rally", self.index_template_provider.template())
+        self.client.index(index_name(self.trial_timestamp), EsRaceStore.RACE_DOC_TYPE, doc)
 
-        trial_timestamp = self.config.opts("meta", "time.start")
-        laps = self.config.opts("benchmarks", "laps")
-
-        selected_challenge = {}
-        for challenge in t.challenges:
-            if challenge.name == self.config.opts("benchmarks", "challenge"):
-                selected_challenge["name"] = challenge.name
-                selected_challenge["operations"] = []
-                for tasks in challenge.schedule:
-                    for task in tasks:
-                        selected_challenge["operations"].append(task.operation.name)
-        doc = {
-            "environment": self.environment_name,
-            "trial-timestamp": time.to_iso8601(trial_timestamp),
-            "pipeline": self.config.opts("system", "pipeline"),
-            "revision": self.config.opts("source", "revision"),
-            "distribution-version": self.config.opts("source", "distribution.version"),
-            "laps": laps,
-            "track": t.name,
-            "selected-challenge": selected_challenge,
-            "car": self.config.opts("benchmarks", "car"),
-            "target-hosts": ["%s:%s" % (i["host"], i["port"]) for i in self.config.opts("launcher", "external.target.hosts")],
-            "user-tag": self.config.opts("system", "user.tag")
-        }
-        self.client.index(index_name(trial_timestamp), EsRaceStore.RACE_DOC_TYPE, doc)
 
     def list(self):
         filters = [{

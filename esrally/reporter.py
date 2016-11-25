@@ -10,8 +10,8 @@ from esrally.utils import convert, io as rio, console
 logger = logging.getLogger("rally.reporting")
 
 
-def summarize(metrics_store, cfg, track, lap=None):
-    SummaryReporter(metrics_store, cfg, lap).report(track)
+def summarize(race_store, metrics_store, cfg, track, lap=None):
+    SummaryReporter(race_store, metrics_store, cfg, lap).report(track)
 
 
 def compare(cfg):
@@ -152,7 +152,8 @@ class Stats:
 
 
 class SummaryReporter:
-    def __init__(self, metrics_store, config, lap):
+    def __init__(self, race_store, metrics_store, config, lap):
+        self._race_store = race_store
         self._metrics_store = metrics_store
         self._config = config
         self._lap = lap
@@ -355,7 +356,7 @@ class SummaryReporter:
 
     def report_meta_info(self):
         return [
-            ["Elasticsearch source revision", self._config.opts("meta", "source.revision", mandatory=False, default_value="unknown")]
+            ["Elasticsearch source revision", self._race_store.current_race.revision]
         ]
 
 

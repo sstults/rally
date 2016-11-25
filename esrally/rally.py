@@ -8,9 +8,10 @@ import time
 
 import pkg_resources
 import thespian.actors
+
 from esrally import config, paths, racecontrol, reporter, metrics, track, exceptions, PROGRAM_NAME, DOC_LINK
-from esrally.utils import io, convert, git, process, console, net
 from esrally.mechanic import car, telemetry
+from esrally.utils import io, convert, git, process, console, net
 
 __version__ = pkg_resources.require("esrally")[0].version
 
@@ -61,6 +62,7 @@ def rally_root_path():
 
 def version():
     release = __version__
+    # noinspection PyBroadException
     try:
         if git.is_working_copy(io.normalize_path("%s/.." % rally_root_path())):
             revision = git.head_revision(rally_root_path())
@@ -292,7 +294,7 @@ def parse_args():
             "--target-hosts",
             help="define a comma-separated list of host:port pairs which should be targeted iff using the pipeline 'benchmark-only' "
                  "(default: localhost:9200).",
-            default="localhost:9200")
+            default="")  # actually the default is pipeline specific and it is set later
         p.add_argument(
             "--client-options",
             help="define a comma-separated list of client options to use. The options will be passed to the Elasticsearch Python client "
@@ -532,7 +534,9 @@ def convert_hosts(configured_host_list):
 
 def bootstrap_actor_system(cfg, system_base="multiprocTCPBase"):
     try:
-        return thespian.actors.ActorSystem(system_base, logDefs=configure_actor_logging(cfg))
+        return thespian.actors.ActorSystem(system_base,
+                                           logDefs=configure_actor_logging(cfg),
+                                           capabilities={"coordinator": True, "ip": "127.0.0.1"})
     except thespian.actors.ActorSystemException:
         logger.exception("Could not initialize internal actor system. Terminating.")
         console.error("Could not initialize successfully.\n")
@@ -580,8 +584,8 @@ def main():
     cfg.add(config.Scope.applicationOverride, "benchmarks", "test.mode", args.test_mode)
     cfg.add(config.Scope.applicationOverride, "provisioning", "datapaths", csv_to_list(args.data_paths))
     cfg.add(config.Scope.applicationOverride, "provisioning", "install.preserve", convert.to_bool(args.preserve_install))
-    cfg.add(config.Scope.applicationOverride, "launcher", "external.target.hosts", convert_hosts(csv_to_list(args.target_hosts)))
-    cfg.add(config.Scope.applicationOverride, "launcher", "client.options", kv_to_map(csv_to_list(args.client_options)))
+    cfg.add(config.Scope.applicationOverride, "client", "hosts", convert_hosts(csv_to_list(args.target_hosts)))
+    cfg.add(config.Scope.applicationOverride, "client", "options", kv_to_map(csv_to_list(args.client_options)))
     cfg.add(config.Scope.applicationOverride, "report", "reportformat", args.report_format)
     cfg.add(config.Scope.applicationOverride, "report", "reportfile", args.report_file)
     if args.override_src_dir is not None:
@@ -638,10 +642,10 @@ def main():
                 logger.info("Shutdown completed.")
             except KeyboardInterrupt:
                 times_interrupted += 1
-                logger.warn("User interrupted shutdown of internal actor system.")
+                logger.warning("User interrupted shutdown of internal actor system.")
                 console.info("Please wait a moment for Rally's internal components to shutdown.")
         if not shutdown_complete and times_interrupted > 0:
-            logger.warn("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
+            logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
             console.println("")
             console.warn("Terminating now at the risk of leaving child processes behind.")
             console.println("")
