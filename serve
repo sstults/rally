@@ -14,4 +14,4 @@ RALLY_SRC_HOME="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 export PYTHONPATH=$RALLY_SRC_HOME:$PYTHONPATH
 
-python3 serve.py
+python3 serve.py "$@"
