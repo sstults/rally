@@ -78,6 +78,7 @@ class Config:
     """
 
     def __init__(self, config_name=None, config_file_class=ConfigFile):
+        self.name = config_name
         self.config_file = config_file_class(config_name)
         self._opts = {}
         self._clear_config()
@@ -92,6 +93,13 @@ class Config:
         :param value: The associated value.
         """
         self._opts[self._k(scope, section, key)] = value
+
+    def add_all(self, source, section):
+        # TODO dm: Test me, Document me
+        for k, v in source._opts.items():
+            scope, source_section, key = k
+            if source_section == section:
+                self.add(scope, source_section, key, v)
 
     def opts(self, section, key, default_value=None, mandatory=True):
         """
@@ -132,12 +140,11 @@ class Config:
         # This map contains default options that we don't want to sprinkle all over the source code but we don't want users to change
         # them either
         self._opts = {
-            "source::distribution.dir": "distributions",
-            "benchmarks::metrics.log.dir": "telemetry",
-            "benchmarks::track.repository.dir": "tracks",
-            "benchmarks::track.default.repository": "default",
-            "provisioning::node.name.prefix": "rally-node",
-            "provisioning::node.http.port": 39200,
+            (Scope.application, "source", "distribution.dir"): "distributions",
+            (Scope.application, "benchmarks", "track.repository.dir"): "tracks",
+            (Scope.application, "benchmarks", "track.default.repository"): "default",
+            (Scope.application, "provisioning", "node.name.prefix"): "rally-node",
+            (Scope.application, "provisioning", "node.http.port"): 39200,
         }
 
     def _fill_from_config_file(self, config):
@@ -159,17 +166,16 @@ class Config:
         if self._k(start_from, section, key) in self._opts:
             return start_from
         elif start_from == Scope.application:
-            return None
+            return Scope.application
         else:
             # continue search in the enclosing scope
             return self._resolve_scope(section, key, Scope(start_from.value - 1))
 
     def _k(self, scope, section, key):
-        # keep global config keys a bit shorter / nicer for now
         if scope is None or scope == Scope.application:
-            return "%s::%s" % (section, key)
+            return Scope.application, section, key
         else:
-            return "%s::%s::%s" % (scope.name, section, key)
+            return scope, section, key
 
 
 class ConfigFactory:
