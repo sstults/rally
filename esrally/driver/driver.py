@@ -172,11 +172,11 @@ class Driver(thespian.actors.Actor):
         self.quiet = self.config.opts("system", "quiet.mode", mandatory=False, default_value=False)
         self.es = client.EsClientFactory(self.config.opts("client", "hosts"), self.config.opts("client", "options")).create()
         self.metrics_store = metrics.InMemoryMetricsStore(config=self.config, meta_info=msg.metrics_meta_info, lap=msg.lap)
-        invocation = self.config.opts("meta", "time.start")
+        invocation = self.config.opts("system", "time.start")
         expected_cluster_health = self.config.opts("benchmarks", "cluster.health")
-        track_name = self.config.opts("benchmarks", "track")
-        challenge_name = self.config.opts("benchmarks", "challenge")
-        selected_car_name = self.config.opts("benchmarks", "car")
+        track_name = self.config.opts("track", "track.name")
+        challenge_name = self.config.opts("track", "challenge.name")
+        selected_car_name = self.config.opts("mechanic", "car.name")
         self.metrics_store.open(invocation, track_name, challenge_name, selected_car_name)
 
         challenge = select_challenge(self.config, current_track)
@@ -437,7 +437,7 @@ class Sample:
 
 
 def select_challenge(config, t):
-    selected_challenge = config.opts("benchmarks", "challenge")
+    selected_challenge = config.opts("track", "challenge.name")
     for challenge in t.challenges:
         if challenge.name == selected_challenge:
             return challenge

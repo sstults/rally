@@ -56,16 +56,12 @@ $$$$$$$$$$""""           ""$$$$$$$$$$$"
 '''
 
 
-def rally_root_path():
-    return os.path.dirname(os.path.realpath(__file__))
-
-
 def version():
     release = __version__
     # noinspection PyBroadException
     try:
-        if git.is_working_copy(io.normalize_path("%s/.." % rally_root_path())):
-            revision = git.head_revision(rally_root_path())
+        if git.is_working_copy(io.normalize_path("%s/.." % paths.rally_root())):
+            revision = git.head_revision(paths.rally_root())
             return "%s (git revision: %s)" % (release, revision.strip())
     except BaseException:
         pass
@@ -427,7 +423,7 @@ def ensure_configuration_present(cfg, args, sub_command):
 def list(cfg):
     what = cfg.opts("system", "list.config.option")
     if what == "telemetry":
-        telemetry.list_telemetry(cfg)
+        telemetry.list_telemetry()
     elif what == "tracks":
         track.list_tracks(cfg)
     elif what == "pipelines":
@@ -536,7 +532,14 @@ def bootstrap_actor_system(cfg, system_base="multiprocTCPBase"):
     try:
         return thespian.actors.ActorSystem(system_base,
                                            logDefs=configure_actor_logging(cfg),
-                                           capabilities={"coordinator": True, "ip": "127.0.0.1"})
+                                           capabilities={
+                                               "coordinator": True,
+                                               # just needed to determine whether to run benchmarks locally
+                                               "ip": "127.0.0.1",
+                                               # Make the coordinator node the convention leader
+                                               # TODO dm: This should not be hardcoded
+                                               "Convention Address.IPv4": "192.168.1.103:1900"
+                                           })
     except thespian.actors.ActorSystemException:
         logger.exception("Could not initialize internal actor system. Terminating.")
         console.error("Could not initialize successfully.\n")
@@ -560,43 +563,57 @@ def main():
     cfg = config.Config(config_name=args.configuration_name)
     sub_command = derive_sub_command(args, cfg)
     ensure_configuration_present(cfg, args, sub_command)
-    # Add global meta info derived by rally itself
-    cfg.add(config.Scope.application, "meta", "time.start", args.effective_start_date)
-    cfg.add(config.Scope.application, "system", "rally.root", rally_root_path())
-    cfg.add(config.Scope.application, "system", "rally.cwd", os.getcwd())
-    cfg.add(config.Scope.application, "system", "invocation.root.dir", paths.Paths(cfg).invocation_root())
-    # Add command line config
-    cfg.add(config.Scope.applicationOverride, "source", "revision", args.revision)
-    cfg.add(config.Scope.applicationOverride, "source", "distribution.version", args.distribution_version)
-    cfg.add(config.Scope.applicationOverride, "source", "distribution.repository", args.distribution_repository)
-    cfg.add(config.Scope.applicationOverride, "system", "pipeline", args.pipeline)
-    cfg.add(config.Scope.applicationOverride, "system", "track.repository", args.track_repository)
+
+    cfg.add(config.Scope.application, "system", "time.start", args.effective_start_date)
     cfg.add(config.Scope.applicationOverride, "system", "quiet.mode", args.quiet)
+
+    # per node?
     cfg.add(config.Scope.applicationOverride, "system", "offline.mode", args.offline)
-    cfg.add(config.Scope.applicationOverride, "system", "user.tag", args.user_tag)
     cfg.add(config.Scope.applicationOverride, "system", "logging.output", args.logging)
-    cfg.add(config.Scope.applicationOverride, "telemetry", "devices", csv_to_list(args.telemetry))
-    cfg.add(config.Scope.applicationOverride, "benchmarks", "track", args.track)
-    cfg.add(config.Scope.applicationOverride, "benchmarks", "challenge", args.challenge)
-    cfg.add(config.Scope.applicationOverride, "benchmarks", "car", args.car)
+
+    # Local config per node
+    cfg.add(config.Scope.application, "node", "rally.root", paths.rally_root())
+    cfg.add(config.Scope.application, "node", "rally.cwd", os.getcwd())
+    cfg.add(config.Scope.application, "node", "invocation.root.dir", paths.Paths(cfg).invocation_root())
+
+    cfg.add(config.Scope.applicationOverride, "mechanic", "source.revision", args.revision)
+    #TODO dm: Consider renaming this one. It's used by different modules
+    cfg.add(config.Scope.applicationOverride, "mechanic", "distribution.version", args.distribution_version)
+    cfg.add(config.Scope.applicationOverride, "mechanic", "distribution.repository", args.distribution_repository)
+    cfg.add(config.Scope.applicationOverride, "mechanic", "car.name", args.car)
+    cfg.add(config.Scope.applicationOverride, "mechanic", "node.datapaths", csv_to_list(args.data_paths))
+    cfg.add(config.Scope.applicationOverride, "mechanic", "preserve.install", convert.to_bool(args.preserve_install))
+    cfg.add(config.Scope.applicationOverride, "mechanic", "telemetry.devices", csv_to_list(args.telemetry))
+    if args.override_src_dir is not None:
+        cfg.add(config.Scope.applicationOverride, "mechanic", "local.src.dir", args.override_src_dir)
+
+    cfg.add(config.Scope.applicationOverride, "race", "pipeline", args.pipeline)
+    cfg.add(config.Scope.applicationOverride, "race", "laps", args.laps)
+    cfg.add(config.Scope.applicationOverride, "race", "user.tag", args.user_tag)
+
+    cfg.add(config.Scope.applicationOverride, "track", "repository.name", args.track_repository)
+    cfg.add(config.Scope.applicationOverride, "track", "track.name", args.track)
+    cfg.add(config.Scope.applicationOverride, "track", "challenge.name", args.challenge)
+    cfg.add(config.Scope.applicationOverride, "track", "test.mode.enabled", args.test_mode)
+
+    cfg.add(config.Scope.applicationOverride, "reporting", "format", args.report_format)
+    cfg.add(config.Scope.applicationOverride, "reporting", "output.path", args.report_file)
+    if sub_command == "compare":
+        cfg.add(config.Scope.applicationOverride, "reporting", "baseline.timestamp", args.baseline)
+        cfg.add(config.Scope.applicationOverride, "reporting", "contender.timestamp", args.contender)
+
+    ################################
+    # new section name: driver
+    ################################
     cfg.add(config.Scope.applicationOverride, "benchmarks", "cluster.health", args.cluster_health)
-    cfg.add(config.Scope.applicationOverride, "benchmarks", "laps", args.laps)
-    cfg.add(config.Scope.applicationOverride, "benchmarks", "test.mode", args.test_mode)
-    cfg.add(config.Scope.applicationOverride, "provisioning", "datapaths", csv_to_list(args.data_paths))
-    cfg.add(config.Scope.applicationOverride, "provisioning", "install.preserve", convert.to_bool(args.preserve_install))
+    # Also needed by mechanic (-> telemetry) - duplicate by module?
     cfg.add(config.Scope.applicationOverride, "client", "hosts", convert_hosts(csv_to_list(args.target_hosts)))
     cfg.add(config.Scope.applicationOverride, "client", "options", kv_to_map(csv_to_list(args.client_options)))
-    cfg.add(config.Scope.applicationOverride, "report", "reportformat", args.report_format)
-    cfg.add(config.Scope.applicationOverride, "report", "reportfile", args.report_file)
-    if args.override_src_dir is not None:
-        cfg.add(config.Scope.applicationOverride, "source", "local.src.dir", args.override_src_dir)
 
+    # split by component?
     if sub_command == "list":
         cfg.add(config.Scope.applicationOverride, "system", "list.config.option", args.configuration)
         cfg.add(config.Scope.applicationOverride, "system", "list.races.max_results", args.limit)
-    if sub_command == "compare":
-        cfg.add(config.Scope.applicationOverride, "report", "comparison.baseline.timestamp", args.baseline)
-        cfg.add(config.Scope.applicationOverride, "report", "comparison.contender.timestamp", args.contender)
 
     configure_logging(cfg)
     logger.info("Rally version [%s]" % version())
@@ -611,7 +628,7 @@ def main():
         else:
             logger.info("Detected a working Internet connection.")
 
-    # Kill any lingering Rally processes before attempting to continue - the actor system needs to a singleton on this machine
+    # Kill any lingering Rally processes before attempting to continue - the actor system needs to be a singleton on this machine
     # noinspection PyBroadException
     try:
         process.kill_running_rally_instances()
@@ -638,6 +655,7 @@ def main():
             try:
                 logger.info("Attempting to shutdown internal actor system.")
                 actors.shutdown()
+
                 shutdown_complete = True
                 logger.info("Shutdown completed.")
             except KeyboardInterrupt:

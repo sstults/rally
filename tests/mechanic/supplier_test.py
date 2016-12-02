@@ -14,9 +14,9 @@ class SourceRepositoryTests(TestCase):
     @mock.patch("esrally.utils.git.is_working_copy", autospec=True)
     def test_intial_checkout_latest(self, mock_is_working_copy, mock_clone, mock_pull, mock_head_revision):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         cfg.add(config.Scope.application, "source", "remote.repo.url", "some-github-url")
-        cfg.add(config.Scope.application, "source", "revision", "latest")
+        cfg.add(config.Scope.application, "mechanic", "source.revision", "latest")
 
         mock_is_working_copy.return_value = False
         mock_head_revision.return_value = "HEAD"
@@ -35,9 +35,9 @@ class SourceRepositoryTests(TestCase):
     @mock.patch("esrally.utils.git.is_working_copy", autospec=True)
     def test_checkout_current(self, mock_is_working_copy, mock_clone, mock_pull, mock_head_revision):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         cfg.add(config.Scope.application, "source", "remote.repo.url", "some-github-url")
-        cfg.add(config.Scope.application, "source", "revision", "current")
+        cfg.add(config.Scope.application, "mechanic", "source.revision", "current")
 
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
@@ -55,9 +55,9 @@ class SourceRepositoryTests(TestCase):
     @mock.patch("esrally.utils.git.is_working_copy", autospec=True)
     def test_checkout_ts(self, mock_is_working_copy, mock_pull_ts, mock_head_revision):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         cfg.add(config.Scope.application, "source", "remote.repo.url", "some-github-url")
-        cfg.add(config.Scope.application, "source", "revision", "@2015-01-01-01:00:00")
+        cfg.add(config.Scope.application, "mechanic", "source.revision", "@2015-01-01-01:00:00")
 
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
@@ -74,9 +74,9 @@ class SourceRepositoryTests(TestCase):
     @mock.patch("esrally.utils.git.is_working_copy", autospec=True)
     def test_checkout_revision(self, mock_is_working_copy, mock_pull_revision, mock_head_revision):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         cfg.add(config.Scope.application, "source", "remote.repo.url", "some-github-url")
-        cfg.add(config.Scope.application, "source", "revision", "67c2f42")
+        cfg.add(config.Scope.application, "mechanic", "source.revision", "67c2f42")
 
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
@@ -96,7 +96,7 @@ class BuilderTests(TestCase):
         mock_run_subprocess.return_value = False
 
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         cfg.add(config.Scope.application, "runtime", "java8.home", "/opt/jdk8")
         cfg.add(config.Scope.application, "build", "gradle.bin", "/usr/local/gradle")
         cfg.add(config.Scope.application, "system", "log.dir", "logs")
@@ -116,10 +116,9 @@ class BuilderTests(TestCase):
     @mock.patch("glob.glob", lambda p: ["elasticsearch.zip"])
     def test_add_binary_to_config(self):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "source", "local.src.dir", "/src")
+        cfg.add(config.Scope.application, "mechanic", "local.src.dir", "/src")
         b = supplier.Builder(cfg)
-        b.add_binary_to_config()
-        self.assertEqual(cfg.opts("builder", "candidate.bin.path"), "elasticsearch.zip")
+        self.assertEqual(b.add_binary_to_config(), "elasticsearch.zip")
 
 
 class SnapshotDistributionRepositoryTests(TestCase):

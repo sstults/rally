@@ -15,8 +15,8 @@ def summarize(race_store, metrics_store, cfg, track, lap=None):
 
 
 def compare(cfg):
-    baseline_ts = cfg.opts("report", "comparison.baseline.timestamp")
-    contender_ts = cfg.opts("report", "comparison.contender.timestamp")
+    baseline_ts = cfg.opts("reporting", "baseline.timestamp")
+    contender_ts = cfg.opts("reporting", "contender.timestamp")
 
     if not baseline_ts or not contender_ts:
         raise exceptions.SystemSetupError("compare needs baseline and a contender")
@@ -162,7 +162,7 @@ class SummaryReporter:
         return self._lap is None
 
     def needs_header(self):
-        laps = self._config.opts("benchmarks", "laps")
+        laps = self._race_store.current_race.laps
         return laps == 1 or self._lap == 1
 
     @property
@@ -192,7 +192,7 @@ class SummaryReporter:
             print_header("--------------------------------------------------")
             print_internal("")
 
-        selected_challenge = self._config.opts("benchmarks", "challenge")
+        selected_challenge = self._config.opts("track", "challenge.name")
         for challenge in t.challenges:
             if challenge.name == selected_challenge:
                 stats = Stats(self._metrics_store, challenge, self._lap)
@@ -220,7 +220,7 @@ class SummaryReporter:
                 self.write_report(metrics_table, meta_info_table)
 
     def write_report(self, metrics_table, meta_info_table):
-        report_file = self._config.opts("report", "reportfile")
+        report_file = self._config.opts("reporting", "output.path")
 
         self.write_single_report(report_file, headers=["Lap", "Metric", "Operation", "Value", "Unit"], data=metrics_table,
                                  write_header=self.needs_header())
@@ -229,7 +229,7 @@ class SummaryReporter:
             self.write_single_report("%s.meta" % report_file, headers=["Name", "Value"], data=meta_info_table, show_also_in_console=False)
 
     def write_single_report(self, report_file, headers, data, write_header=True, show_also_in_console=True):
-        report_format = self._config.opts("report", "reportformat")
+        report_format = self._config.opts("reporting", "format")
         if report_format == "markdown":
             formatter = self.format_as_markdown
         elif report_format == "csv":
@@ -240,7 +240,7 @@ class SummaryReporter:
         if show_also_in_console:
             print_internal(formatter(headers, data))
         if len(report_file) > 0:
-            cwd = self._config.opts("system", "rally.cwd")
+            cwd = self._config.opts("node", "rally.cwd")
             normalized_report_file = rio.normalize_path(report_file, cwd)
             logger.info("Writing report to [%s] (user specified: [%s]) in format [%s]" %
                         (normalized_report_file, report_file, report_format))

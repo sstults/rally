@@ -14,7 +14,7 @@ class ProvisionerTests(TestCase):
         cfg = config.Config()
         cfg.add(config.Scope.application, "system", "challenge.root.dir", "/rally-root/track/challenge")
         cfg.add(config.Scope.application, "provisioning", "local.install.dir", "es-bin")
-        cfg.add(config.Scope.application, "provisioning", "install.preserve", True)
+        cfg.add(config.Scope.application, "mechanic", "preserve.install", True)
         cfg.add(config.Scope.application, "provisioning", "local.data.paths", ["/tmp/some/data-path-dir"])
 
         p = provisioner.Provisioner(cfg)
@@ -31,7 +31,7 @@ class ProvisionerTests(TestCase):
         cfg = config.Config()
         cfg.add(config.Scope.application, "system", "challenge.root.dir", "/rally-root/track/challenge")
         cfg.add(config.Scope.application, "provisioning", "local.install.dir", "es-bin")
-        cfg.add(config.Scope.application, "provisioning", "install.preserve", False)
+        cfg.add(config.Scope.application, "mechanic", "preserve.install", False)
         cfg.add(config.Scope.application, "provisioning", "local.data.paths", ["/tmp/some/data-path-dir"])
 
         p = provisioner.Provisioner(cfg)
@@ -53,15 +53,14 @@ class ProvisionerTests(TestCase):
         cfg = config.Config()
         cfg.add(config.Scope.application, "system", "env.name", "unittest")
         cfg.add(config.Scope.application, "system", "challenge.root.dir", "/rally-root/track/challenge")
-        cfg.add(config.Scope.application, "benchmarks", "car", "defaults")
-        cfg.add(config.Scope.application, "builder", "candidate.bin.path", "/data/builds/distributions/")
+        cfg.add(config.Scope.application, "mechanic", "car.name", "defaults")
         cfg.add(config.Scope.application, "provisioning", "local.install.dir", "es-bin")
-        cfg.add(config.Scope.application, "provisioning", "install.preserve", False)
-        cfg.add(config.Scope.application, "provisioning", "datapaths", ["/var/elasticsearch"])
+        cfg.add(config.Scope.application, "mechanic", "preserve.install", False)
+        cfg.add(config.Scope.application, "mechanic", "node.datapaths", ["/var/elasticsearch"])
         cfg.add(config.Scope.application, "provisioning", "node.http.port", 39200)
 
         p = provisioner.Provisioner(cfg)
-        p.prepare()
+        p.prepare("/data/builds/distributions/")
 
         self.assertEqual(cfg.opts("provisioning", "local.binary.path"), "/install/elasticsearch-5.0.0-SNAPSHOT")
         self.assertEqual(cfg.opts("provisioning", "local.data.paths"), ["/var/elasticsearch/data"])

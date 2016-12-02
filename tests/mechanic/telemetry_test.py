@@ -15,13 +15,13 @@ def create_config():
     cfg.add(config.Scope.application, "reporting", "datastore.user", "")
     cfg.add(config.Scope.application, "reporting", "datastore.password", "")
     # only internal devices are active
-    cfg.add(config.Scope.application, "telemetry", "devices", [])
+    cfg.add(config.Scope.application, "mechanic", "telemetry.devices", [])
     return cfg
 
 
 class MockTelemetryDevice(telemetry.InternalTelemetryDevice):
-    def __init__(self, cfg, metrics_store, mock_env):
-        super().__init__(cfg, metrics_store)
+    def __init__(self, mock_env):
+        super().__init__()
         self.mock_env = mock_env
 
     def instrument_env(self, car, candidate_id):
@@ -31,20 +31,17 @@ class MockTelemetryDevice(telemetry.InternalTelemetryDevice):
 class TelemetryTests(TestCase):
     def test_merges_options_set_by_different_devices(self):
         cfg = config.Config()
-        cfg.add(config.Scope.application, "telemetry", "devices", "jfr")
+        cfg.add(config.Scope.application, "mechanic", "telemetry.devices", "jfr")
         cfg.add(config.Scope.application, "system", "challenge.root.dir", "challenge-root")
         cfg.add(config.Scope.application, "benchmarks", "metrics.log.dir", "telemetry")
 
-        # we don't need one for this test
-        metrics_store = None
-
         devices = [
-            MockTelemetryDevice(cfg, metrics_store, {"ES_JAVA_OPTS": "-Xms256M"}),
-            MockTelemetryDevice(cfg, metrics_store, {"ES_JAVA_OPTS": "-Xmx512M"}),
-            MockTelemetryDevice(cfg, metrics_store, {"ES_NET_HOST": "127.0.0.1"})
+            MockTelemetryDevice({"ES_JAVA_OPTS": "-Xms256M"}),
+            MockTelemetryDevice({"ES_JAVA_OPTS": "-Xmx512M"}),
+            MockTelemetryDevice({"ES_NET_HOST": "127.0.0.1"})
         ]
 
-        t = telemetry.Telemetry(cfg=cfg, devices=devices)
+        t = telemetry.Telemetry(enabled_devices=None, devices=devices)
 
         default_car = car.Car(name="default-car")
         opts = t.instrument_candidate_env(default_car, "default-node")

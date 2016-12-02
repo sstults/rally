@@ -118,10 +118,10 @@ class Benchmark:
         self.sweep()
 
     def sweep(self):
-        invocation_root = self.cfg.opts("system", "invocation.root.dir")
-        track_name = self.cfg.opts("benchmarks", "track")
-        challenge_name = self.cfg.opts("benchmarks", "challenge")
-        car_name = self.cfg.opts("benchmarks", "car")
+        invocation_root = self.cfg.opts("node", "invocation.root.dir")
+        track_name = self.cfg.opts("track", "track.name")
+        challenge_name = self.cfg.opts("track", "challenge.name")
+        car_name = self.cfg.opts("mechanic", "car.name")
 
         log_root = paths.Paths(self.cfg).log_root()
         archive_path = "%s/logs-%s-%s-%s.zip" % (invocation_root, track_name, challenge_name, car_name)
@@ -164,9 +164,9 @@ class LapCounter:
 
 
 def print_race_info(cfg):
-    track_name = cfg.opts("benchmarks", "track")
-    challenge_name = cfg.opts("benchmarks", "challenge")
-    selected_car_name = cfg.opts("benchmarks", "car")
+    track_name = cfg.opts("track", "track.name")
+    challenge_name = cfg.opts("track", "challenge.name")
+    selected_car_name = cfg.opts("mechanic", "car.name")
     console.info("Racing on track [%s], challenge [%s] and car [%s]" % (track_name, challenge_name, selected_car_name))
     # just ensure it is optically separated
     console.println("")
@@ -174,7 +174,7 @@ def print_race_info(cfg):
 
 def race(benchmark):
     cfg = benchmark.cfg
-    laps = cfg.opts("benchmarks", "laps")
+    laps = cfg.opts("race", "laps")
     print_race_info(cfg)
     benchmark.setup()
     lap_counter = LapCounter(benchmark.metrics_store, benchmark.track, laps, cfg)
@@ -221,7 +221,7 @@ def from_distribution(cfg):
 def benchmark_only(cfg):
     set_default_hosts(cfg)
     # We'll use a special car name for external benchmarks.
-    cfg.add(config.Scope.benchmark, "benchmarks", "car", "external")
+    cfg.add(config.Scope.benchmark, "mechanic", "car.name", "external")
     metrics_store = metrics.metrics_store(cfg, read_only=False)
     return race(Benchmark(cfg, metrics_store, external=True))
 
@@ -259,9 +259,9 @@ def list_pipelines():
 
 
 def run(cfg):
-    name = cfg.opts("system", "pipeline")
+    name = cfg.opts("race", "pipeline")
     if len(name) == 0:
-        distribution_version = cfg.opts("source", "distribution.version")
+        distribution_version = cfg.opts("mechanic", "distribution.version")
         if len(distribution_version) > 0:
             name = "from-distribution"
         else:

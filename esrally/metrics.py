@@ -91,7 +91,7 @@ class IndexTemplateProvider:
         self._config = config
 
     def template(self):
-        script_dir = self._config.opts("system", "rally.root")
+        script_dir = self._config.opts("node", "rally.root")
         mapping_template = "%s/resources/rally-mapping.json" % script_dir
         return open(mapping_template).read()
 
@@ -130,10 +130,10 @@ def metrics_store(config, read_only=True, invocation=None, track=None, challenge
         logger.info("Creating in-memory metrics store")
         store = InMemoryMetricsStore(config)
 
-    selected_invocation = config.opts("meta", "time.start") if invocation is None else invocation
-    selected_track = config.opts("benchmarks", "track") if track is None else track
-    selected_challenge = config.opts("benchmarks", "challenge") if challenge is None else challenge
-    selected_car = config.opts("benchmarks", "car") if car is None else car
+    selected_invocation = config.opts("system", "time.start") if invocation is None else invocation
+    selected_track = config.opts("track", "track.name") if track is None else track
+    selected_challenge = config.opts("track", "challenge.name") if challenge is None else challenge
+    selected_car = config.opts("mechanic", "car.name") if car is None else car
 
     store.open(selected_invocation, selected_track, selected_challenge, selected_car, create=not read_only)
     return store
@@ -192,7 +192,7 @@ class MetricsStore:
         self._car = car_name
         logger.info("Opening metrics store for invocation=[%s], track=[%s], challenge=[%s], car=[%s]" %
                     (self._invocation, track_name, challenge_name, car_name))
-        user_tag = self._config.opts("system", "user.tag", mandatory=False)
+        user_tag = self._config.opts("race", "user.tag", mandatory=False)
         if user_tag and user_tag.strip() != "":
             try:
                 user_tag_key, user_tag_value = user_tag.split(":")
@@ -820,15 +820,15 @@ class RaceStore:
     def __init__(self, config):
         self.config = config
         self.environment_name = config.opts("system", "env.name")
-        self.trial_timestamp = config.opts("meta", "time.start")
+        self.trial_timestamp = config.opts("system", "time.start")
         self.current_race = None
 
     def store_race(self, track, hosts, revision, distribution_version):
-        laps = self.config.opts("benchmarks", "laps")
+        laps = self.config.opts("race", "laps")
 
         selected_challenge = {}
         for challenge in track.challenges:
-            if challenge.name == self.config.opts("benchmarks", "challenge"):
+            if challenge.name == self.config.opts("track", "challenge.name"):
                 selected_challenge["name"] = challenge.name
                 selected_challenge["operations"] = []
                 for tasks in challenge.schedule:
@@ -837,15 +837,15 @@ class RaceStore:
         doc = {
             "environment": self.environment_name,
             "trial-timestamp": time.to_iso8601(self.trial_timestamp),
-            "pipeline": self.config.opts("system", "pipeline"),
+            "pipeline": self.config.opts("race", "pipeline"),
             "revision": revision,
             "distribution-version": distribution_version,
             "laps": laps,
             "track": track.name,
             "selected-challenge": selected_challenge,
-            "car": self.config.opts("benchmarks", "car"),
+            "car": self.config.opts("mechanic", "car.name"),
             "target-hosts": ["%s:%s" % (i["host"], i["port"]) for i in hosts],
-            "user-tag": self.config.opts("system", "user.tag")
+            "user-tag": self.config.opts("race", "user.tag")
         }
         self.current_race = Race(doc)
         self._store(doc)

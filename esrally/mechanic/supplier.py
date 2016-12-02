@@ -30,8 +30,8 @@ def from_sources(cfg, build=True):
 
 
 def from_distribution(cfg):
-    version = cfg.opts("source", "distribution.version")
-    repo_name = cfg.opts("source", "distribution.repository")
+    version = cfg.opts("mechanic", "distribution.version")
+    repo_name = cfg.opts("mechanic", "distribution.repository")
     if version.strip() == "":
         raise exceptions.SystemSetupError("Could not determine version. Please specify the Elasticsearch distribution "
                                           "to download with the command line parameter --distribution-version. "
@@ -60,8 +60,7 @@ def from_distribution(cfg):
                                               "version [%s] is correct." % (download_url, version))
     else:
         logger.info("Skipping download for version [%s]. Found an existing binary locally at [%s]." % (version, distribution_path))
-
-    cfg.add(config.Scope.invocation, "builder", "candidate.bin.path", distribution_path)
+    return distribution_path
 
 
 class SourceRepository:
@@ -83,7 +82,7 @@ class SourceRepository:
             git.clone(self.src_dir, self.remote_url)
 
     def _update(self):
-        revision = self.cfg.opts("source", "revision")
+        revision = self.cfg.opts("mechanic", "source.revision")
         if revision == "latest":
             logger.info("Fetching latest sources from origin.")
             git.pull(self.src_dir)
@@ -101,7 +100,7 @@ class SourceRepository:
     @property
     def src_dir(self):
         try:
-            return self.cfg.opts("source", "local.src.dir")
+            return self.cfg.opts("mechanic", "local.src.dir")
         except config.ConfigError:
             logger.exception("Cannot determine source directory")
             raise exceptions.SystemSetupError("You cannot benchmark Elasticsearch from sources. Are you missing Gradle 2.13? Please install"
@@ -127,16 +126,15 @@ class Builder:
         self.run(":distribution:tar:assemble")
 
     def add_binary_to_config(self):
-        src_dir = self._config.opts("source", "local.src.dir")
+        src_dir = self._config.opts("mechanic", "local.src.dir")
         try:
-            binary = glob.glob("%s/distribution/tar/build/distributions/*.tar.gz" % src_dir)[0]
+            return glob.glob("%s/distribution/tar/build/distributions/*.tar.gz" % src_dir)[0]
         except IndexError:
             raise SystemSetupError("Couldn't find a tar.gz distribution. Please run Rally with the pipeline 'from-sources-complete'.")
-        self._config.add(config.Scope.invocation, "builder", "candidate.bin.path", binary)
 
     def run(self, task):
         try:
-            src_dir = self._config.opts("source", "local.src.dir")
+            src_dir = self._config.opts("mechanic", "local.src.dir")
         except config.ConfigError:
             logging.exception("Rally is not configured to build from sources")
             raise SystemSetupError("Rally is not setup to build from sources. You can either benchmark a binary distribution or "
