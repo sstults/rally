@@ -2,7 +2,7 @@ import logging
 
 import thespian.actors
 
-from esrally import paths, config, metrics, exceptions
+from esrally import actor, paths, config, metrics, exceptions
 from esrally.mechanic import supplier, provisioner, launcher
 
 logger = logging.getLogger("rally.mechanic")
@@ -64,7 +64,7 @@ class OnBenchmarkStop:
     pass
 
 
-class MechanicActor(thespian.actors.Actor):
+class MechanicActor(actor.RallyActor):
     """
     This actor coordinates all associated mechanics on remote hosts (which do the actual work).
     """
@@ -126,7 +126,7 @@ class MechanicActor(thespian.actors.Actor):
             self.send(self.race_control, Failure("Could not execute command", e))
 
 
-class NodeMechanicActor(thespian.actors.Actor):
+class NodeMechanicActor(actor.RallyActor):
     """
     One instance of this actor is run on each target host and coordinates the actual work of starting / stopping nodes.
     """
@@ -136,14 +136,6 @@ class NodeMechanicActor(thespian.actors.Actor):
         self.metrics_store = None
         self.mechanic = None
         self.single_machine = single_machine
-
-    @staticmethod
-    def actorSystemCapabilityCheck(capabilities, requirements):
-        for name, value in requirements.items():
-            current = capabilities.get(name, None)
-            if current != value:
-                return False
-        return True
 
     def receiveMessage(self, msg, sender):
         # at the moment, we implement all message handling blocking. This is not ideal but simple to get started with. Besides, the caller

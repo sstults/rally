@@ -81,7 +81,7 @@ class Benchmark:
 
     def run(self, lap):
         self.metrics_store.lap = lap
-        main_driver = self.actor_system.createActor(driver.Driver)
+        main_driver = self.actor_system.createActor(driver.Driver, targetActorRequirements={"coordinator": True})
         #TODO dm (urgent): We should rather use 'tell' here. Check why it is not working yet.
         self.actor_system.ask(self.mechanic, mechanic.OnBenchmarkStart(lap))
         result = self.actor_system.ask(main_driver,

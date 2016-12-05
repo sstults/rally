@@ -7,9 +7,8 @@ import sys
 import time
 
 import pkg_resources
-import thespian.actors
 
-from esrally import config, paths, racecontrol, reporter, metrics, track, exceptions, PROGRAM_NAME, DOC_LINK
+from esrally import actor, config, paths, racecontrol, reporter, metrics, track, exceptions, PROGRAM_NAME, DOC_LINK
 from esrally.mechanic import car, telemetry
 from esrally.utils import io, convert, git, process, console, net
 
@@ -113,64 +112,6 @@ def configure_logging(cfg):
 
     logging.root.addHandler(ch)
     logging.getLogger("elasticsearch").setLevel(logging.WARN)
-
-
-def configure_actor_logging(cfg):
-    class ActorLogFilter(logging.Filter):
-        def filter(self, logrecord):
-            return "actorAddress" in logrecord.__dict__
-
-    class NotActorLogFilter(logging.Filter):
-        def filter(self, logrecord):
-            return "actorAddress" not in logrecord.__dict__
-
-    log_dir = paths.Paths(cfg).log_root()
-
-    logging_output = cfg.opts("system", "logging.output")
-
-    if logging_output == "file":
-        actor_log_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actors.log" % log_dir}
-        actor_messages_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actor-messages.log" % log_dir}
-    else:
-        actor_log_handler = {"class": "logging.StreamHandler", "stream": sys.stdout}
-        actor_messages_handler = {"class": "logging.StreamHandler", "stream": sys.stdout}
-
-    actor_log_handler["formatter"] = "normal"
-    actor_log_handler["filters"] = ["notActorLog"]
-    actor_log_handler["level"] = logging.INFO
-
-    actor_messages_handler["formatter"] = "actor"
-    actor_messages_handler["filters"] = ["isActorLog"]
-    actor_messages_handler["level"] = logging.INFO
-
-    return {
-        "version": 1,
-        "formatters": {
-            "normal": {
-                "format": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s"
-            },
-            "actor": {
-                "format": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(actorAddress)s => %(message)s"
-            }
-        },
-        "filters": {
-            "isActorLog": {
-                "()": ActorLogFilter
-            },
-            "notActorLog": {
-                "()": NotActorLogFilter
-            }
-        },
-        "handlers": {
-            "h1": actor_log_handler,
-            "h2": actor_messages_handler
-        },
-        "loggers": {
-            "": {
-                "handlers": ["h1", "h2"], "level": logging.INFO
-            }
-        }
-    }
 
 
 def parse_args():
@@ -528,27 +469,6 @@ def convert_hosts(configured_host_list):
         raise exceptions.SystemSetupError(msg)
 
 
-def bootstrap_actor_system(cfg, system_base="multiprocTCPBase"):
-    try:
-        return thespian.actors.ActorSystem(system_base,
-                                           logDefs=configure_actor_logging(cfg),
-                                           capabilities={
-                                               "coordinator": True,
-                                               # just needed to determine whether to run benchmarks locally
-                                               "ip": "127.0.0.1",
-                                               # Make the coordinator node the convention leader
-                                               # TODO dm: This should not be hardcoded
-                                               "Convention Address.IPv4": "192.168.1.103:1900"
-                                           })
-    except thespian.actors.ActorSystemException:
-        logger.exception("Could not initialize internal actor system. Terminating.")
-        console.error("Could not initialize successfully.\n")
-        console.error("Are there are still processes from a previous race?")
-        console.error("Please check and terminate related Python processes before running Rally again.\n")
-        print_help_on_errors(cfg)
-        sys.exit(70)
-
-
 def main():
     start = time.time()
     # Early init of console output so we start to show everything consistently.
@@ -636,12 +556,12 @@ def main():
         logger.exception("Could not terminate potentially running Rally instances correctly. Attempting to go on anyway.")
 
     try:
-        actors = bootstrap_actor_system(cfg)
+        actors = actor.bootstrap_actor_system(prefer_local_only=True)
     except RuntimeError as e:
         logger.exception("Could not bootstrap actor system.")
         if str(e) == "Unable to determine valid external socket address.":
             console.warn("Could not determine a socket address. Are you running without any network?", logger=logger)
-            actors = bootstrap_actor_system(cfg, system_base="multiprocQueueBase")
+            actors = actor.bootstrap_actor_system(system_base="multiprocQueueBase")
         else:
             raise
 
