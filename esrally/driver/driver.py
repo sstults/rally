@@ -184,8 +184,12 @@ class Driver(actor.RallyActor):
         self.metrics_store.open(invocation, track_name, challenge_name, selected_car_name)
 
         challenge = select_challenge(self.config, current_track)
+
+        for template in current_track.templates:
+            setup_template(self.es, template)
         for index in current_track.indices:
             setup_index(self.es, index, challenge.index_settings)
+
         wait_for_status(self.es, expected_cluster_health)
         allocator = Allocator(challenge.schedule)
         self.allocations = allocator.allocations
@@ -454,6 +458,17 @@ def select_challenge(config, t):
             return challenge
     raise exceptions.SystemSetupError("Unknown challenge [%s] for track [%s]. You can list the available tracks and their "
                                       "challenges with %s list tracks." % (selected_challenge, t.name, PROGRAM_NAME))
+
+
+def setup_template(es, template, source=io.FileSource):
+    if es.indices.exists_template(template.name):
+        es.indices.delete_template(template.name)
+    # Always wipe the matching indices too
+    es.indices.delete(index=template.pattern)
+    with source(template.template_file, "rt") as f:
+        template_content = f.read()
+    logger.info("create index template [%s] matching indices [%s] with content:\n%s" % (template.name, template.pattern, template_content))
+    es.indices.put_template(name=template.name, body=template_content)
 
 
 def setup_index(es, index, index_settings, source=io.FileSource):
