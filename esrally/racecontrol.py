@@ -80,6 +80,12 @@ class Benchmark:
             raise exceptions.RallyError("Mechanic has not started engine but instead [%s]. Terminating race without result." % str(result))
 
     def run(self, lap):
+        """
+        Runs the provided lap of a benchmark.
+
+        :param lap: The current lap number.
+        :return: True iff the benchmark may go on. False iff the user has cancelled the benchmark.
+        """
         self.metrics_store.lap = lap
         main_driver = self.actor_system.createActor(driver.Driver, targetActorRequirements={"coordinator": True})
         #TODO dm (urgent): We should rather use 'tell' here. Check why it is not working yet.
@@ -95,10 +101,14 @@ class Benchmark:
             logger.info("Flushing metrics data...")
             self.metrics_store.flush()
             logger.info("Flushing done")
+        elif isinstance(result, driver.BenchmarkCancelled):
+            logger.info("User has cancelled the benchmark.")
+            return False
         elif isinstance(result, driver.BenchmarkFailure):
             raise exceptions.RallyError(result.message, result.cause)
         else:
             raise exceptions.RallyError("Driver has returned no metrics but instead [%s]. Terminating race without result." % str(result))
+        return True
 
     def teardown(self):
         result = self.actor_system.ask(self.mechanic, mechanic.StopEngine())
@@ -181,8 +191,12 @@ def race(benchmark):
 
     for lap in range(1, laps + 1):
         lap_counter.before_lap(lap)
-        benchmark.run(lap)
-        lap_counter.after_lap(lap)
+        may_continue = benchmark.run(lap)
+        if may_continue:
+            lap_counter.after_lap(lap)
+        else:
+            # Early termination due to cancellation by the user
+            break
 
     benchmark.teardown()
 

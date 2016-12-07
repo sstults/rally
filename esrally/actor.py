@@ -2,6 +2,7 @@ import sys
 import logging
 import faulthandler
 import signal
+import time
 
 
 import thespian.actors
@@ -15,6 +16,8 @@ logger = logging.getLogger("rally.actor")
 class RallyActor(thespian.actors.Actor):
     def __init__(self):
         super().__init__()
+        # see https://groups.google.com/d/msg/thespianpy/FntU9umtvhc/UYizXz8mDQAJ
+        logging.getLogger().setLevel(logging.WARNING)
         faulthandler.register(signal.SIGQUIT, file=sys.stderr)
 
     @staticmethod
@@ -34,6 +37,12 @@ def configure_actor_logging():
     class NotActorLogFilter(logging.Filter):
         def filter(self, logrecord):
             return "actorAddress" not in logrecord.__dict__
+
+    def configure_utc_formatter(*args, **kwargs):
+        formatter = logging.Formatter(fmt=kwargs["fmt"], datefmt=kwargs["datefmt"])
+        formatter.converter = time.gmtime
+        return formatter
+
 
     # TODO dm: Only stdout logging for the moment.
     actor_log_handler = {"class": "logging.StreamHandler", "stream": sys.stderr}
@@ -58,10 +67,14 @@ def configure_actor_logging():
         "version": 1,
         "formatters": {
             "normal": {
-                "format": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s"
+                "fmt": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+                "()": configure_utc_formatter
             },
             "actor": {
-                "format": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(actorAddress)s => %(message)s"
+                "fmt": "%(asctime)s,%(msecs)d %(name)s %(levelname)s %(actorAddress)s => %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+                "()": configure_utc_formatter
             }
         },
         "filters": {
@@ -77,10 +90,12 @@ def configure_actor_logging():
             "h2": actor_messages_handler
         },
         "loggers": {
-            "": {
-                "handlers": ["h1", "h2"], "level": logging.INFO
+            "root": {
+                "handlers": ["h1", "h2"],
+                "level": logging.INFO
             }
-        }
+        },
+        "disable_existing_loggers": True
     }
 
 
@@ -93,16 +108,19 @@ def my_ip():
     return local_ips[0]
 
 
-def bootstrap_actor_system(prefer_local_only=False, coordinator_ip=None, system_base="multiprocTCPBase"):
+def bootstrap_actor_system(prefer_local_only=False, local_ip=None, coordinator_ip=None, system_base="multiprocTCPBase"):
     try:
         if prefer_local_only:
             coordinator_ip = "127.0.0.1"
             local_ip = "127.0.0.1"
             coordinator = True
         else:
-            local_ip = my_ip()
+            if system_base != "multiprocTCPBase" and system_base != "multiprocUDPBase":
+                raise exceptions.SystemSetupError("Rally requires a network-capable system base but got [%s]." % system_base)
             if not coordinator_ip:
                 raise exceptions.SystemSetupError("coordinator IP is required")
+            if not local_ip:
+                raise exceptions.SystemSetupError("local IP is required")
             coordinator = local_ip == coordinator_ip
 
         return thespian.actors.ActorSystem(system_base,

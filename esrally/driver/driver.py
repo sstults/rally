@@ -105,6 +105,13 @@ class BenchmarkFailure:
         self.cause = cause
 
 
+class BenchmarkCancelled:
+    """
+    Indicates that the benchmark has been cancelled (by the user).
+    """
+    pass
+
+
 class Driver(actor.RallyActor):
     WAKEUP_INTERVAL_SECONDS = 1
     """
@@ -147,6 +154,10 @@ class Driver(actor.RallyActor):
                     self.wakeupAfter(datetime.timedelta(seconds=Driver.WAKEUP_INTERVAL_SECONDS))
             elif isinstance(msg, BenchmarkFailure):
                 logger.error("Main driver received a fatal exception from a load generator. Shutting down.")
+                self.metrics_store.close()
+                self.send(self.start_sender, msg)
+                self.send(self.myAddress, thespian.actors.ActorExitRequest())
+            elif isinstance(msg, BenchmarkCancelled):
                 self.metrics_store.close()
                 self.send(self.start_sender, msg)
                 self.send(self.myAddress, thespian.actors.ActorExitRequest())
@@ -350,6 +361,8 @@ class LoadGenerator(actor.RallyActor):
                 else:
                     self.send_samples()
                     if self.executor_future is not None:
+                        if self.executor_future.cancelled():
+                            self.send(self.master, BenchmarkCancelled())
                         if self.executor_future.done():
                             e = self.executor_future.exception(timeout=0)
                             if e:

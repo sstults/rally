@@ -81,7 +81,7 @@ class MechanicActor(actor.RallyActor):
                 self.race_control = sender
                 if msg.external:
                     # just create one actor for this special case and run it on the coordinator node (i.e. here)
-                    self.mechanics.append(self.createActor(NodeMechanicActor, targetActorRequirements={"coordinator": True}))
+                    self.mechanics.append(self.createActor(LocalNodeMechanicActor, targetActorRequirements={"coordinator": True}))
                 else:
                     hosts = msg.cfg.opts("client", "hosts")
                     if len(hosts) == 0:
