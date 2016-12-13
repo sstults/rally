@@ -381,8 +381,9 @@ class LoadGenerator(actor.RallyActor):
                         logger.warning("Could not cancel running schedule execution.")
 
             else:
-                logger.info("LoadGenerator[%d] received unknown message [%s] (ignoring)." % (self.client_id, str(msg)))
-        except BaseException as e:
+                logger.debug("client [%d] received unknown message [%s] (ignoring)." % (self.client_id, str(msg)))
+        except Exception as e:
+            logger.exception("Fatal error in load generator [%d]" % self.client_id)
             self.send(self.master, BenchmarkFailure("Fatal error in load generator [%d]" % self.client_id, e))
 
     def drive(self):
