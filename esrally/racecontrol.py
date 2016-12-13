@@ -61,11 +61,13 @@ class Benchmark:
 
         self.actor_system = None
         self.mechanic = None
+        self.main_driver = None
         self.track = None
 
     def setup(self):
         self.actor_system = thespian.actors.ActorSystem()
         self.mechanic = self.actor_system.createActor(mechanic.MechanicActor)
+        self.main_driver = self.actor_system.createActor(driver.Driver, targetActorRequirements={"coordinator": True})
         result = self.actor_system.ask(self.mechanic,
                                        mechanic.StartEngine(
                                            self.cfg, self.sources, self.build, self.distribution, self.external, self.docker))
@@ -87,10 +89,9 @@ class Benchmark:
         :return: True iff the benchmark may go on. False iff the user has cancelled the benchmark.
         """
         self.metrics_store.lap = lap
-        main_driver = self.actor_system.createActor(driver.Driver, targetActorRequirements={"coordinator": True})
         #TODO dm (urgent): We should rather use 'tell' here. Check why it is not working yet.
         self.actor_system.ask(self.mechanic, mechanic.OnBenchmarkStart(lap))
-        result = self.actor_system.ask(main_driver,
+        result = self.actor_system.ask(self.main_driver,
                                        driver.StartBenchmark(self.cfg, self.track, self.metrics_store.meta_info, lap))
         if isinstance(result, driver.BenchmarkComplete):
             logger.info("Benchmark is complete.")

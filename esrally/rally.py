@@ -388,6 +388,43 @@ def print_help_on_errors(cfg):
                     (console.format.link("https://github.com/elastic/rally/issues"), log_file_path(cfg)))
 
 
+def race(cfg):
+    try:
+        actors = actor.bootstrap_actor_system(prefer_local_only=True)
+    except RuntimeError as e:
+        logger.exception("Could not bootstrap actor system.")
+        if str(e) == "Unable to determine valid external socket address.":
+            console.warn("Could not determine a socket address. Are you running without any network?", logger=logger)
+            actors = actor.bootstrap_actor_system(system_base="multiprocQueueBase")
+        else:
+            raise
+    try:
+        racecontrol.run(cfg)
+    finally:
+        shutdown_complete = False
+        times_interrupted = 0
+        while not shutdown_complete and times_interrupted < 2:
+            try:
+                logger.info("Attempting to shutdown internal actor system.")
+                actors.shutdown()
+
+                shutdown_complete = True
+                logger.info("Shutdown completed.")
+            except KeyboardInterrupt:
+                times_interrupted += 1
+                logger.warning("User interrupted shutdown of internal actor system.")
+                console.info("Please wait a moment for Rally's internal components to shutdown.")
+        if not shutdown_complete and times_interrupted > 0:
+            logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
+            console.println("")
+            console.warn("Terminating now at the risk of leaving child processes behind.")
+            console.println("")
+            console.warn("The next race may fail due to an unclean shutdown.")
+            console.println("")
+            console.println(SKULL)
+            console.println("")
+
+
 def dispatch_sub_command(cfg, sub_command):
     try:
         if sub_command == "compare":
@@ -395,7 +432,7 @@ def dispatch_sub_command(cfg, sub_command):
         elif sub_command == "list":
             list(cfg)
         elif sub_command == "race":
-            racecontrol.run(cfg)
+            race(cfg)
         else:
             raise exceptions.SystemSetupError("Unknown subcommand [%s]" % sub_command)
         return True
@@ -555,42 +592,7 @@ def main():
     except BaseException:
         logger.exception("Could not terminate potentially running Rally instances correctly. Attempting to go on anyway.")
 
-    try:
-        actors = actor.bootstrap_actor_system(prefer_local_only=True)
-    except RuntimeError as e:
-        logger.exception("Could not bootstrap actor system.")
-        if str(e) == "Unable to determine valid external socket address.":
-            console.warn("Could not determine a socket address. Are you running without any network?", logger=logger)
-            actors = actor.bootstrap_actor_system(system_base="multiprocQueueBase")
-        else:
-            raise
-
-    success = False
-    try:
-        success = dispatch_sub_command(cfg, sub_command)
-    finally:
-        shutdown_complete = False
-        times_interrupted = 0
-        while not shutdown_complete and times_interrupted < 2:
-            try:
-                logger.info("Attempting to shutdown internal actor system.")
-                actors.shutdown()
-
-                shutdown_complete = True
-                logger.info("Shutdown completed.")
-            except KeyboardInterrupt:
-                times_interrupted += 1
-                logger.warning("User interrupted shutdown of internal actor system.")
-                console.info("Please wait a moment for Rally's internal components to shutdown.")
-        if not shutdown_complete and times_interrupted > 0:
-            logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
-            console.println("")
-            console.warn("Terminating now at the risk of leaving child processes behind.")
-            console.println("")
-            console.warn("The next race may fail due to an unclean shutdown.")
-            console.println("")
-            console.println(SKULL)
-            console.println("")
+    success = dispatch_sub_command(cfg, sub_command)
 
     end = time.time()
     if success:

@@ -4,6 +4,7 @@ import faulthandler
 import signal
 import time
 
+import os
 
 import thespian.actors
 
@@ -29,28 +30,30 @@ class RallyActor(thespian.actors.Actor):
         return True
 
 
+# Defined on top-level to allow pickling
+class ActorLogFilter(logging.Filter):
+    def filter(self, logrecord):
+        return "actorAddress" in logrecord.__dict__
+
+# Defined on top-level to allow pickling
+class NotActorLogFilter(logging.Filter):
+    def filter(self, logrecord):
+        return "actorAddress" not in logrecord.__dict__
+
+# Defined on top-level to allow pickling
+def configure_utc_formatter(*args, **kwargs):
+    formatter = logging.Formatter(fmt=kwargs["fmt"], datefmt=kwargs["datefmt"])
+    formatter.converter = time.gmtime
+    return formatter
+
+
 def configure_actor_logging():
-    class ActorLogFilter(logging.Filter):
-        def filter(self, logrecord):
-            return "actorAddress" in logrecord.__dict__
-
-    class NotActorLogFilter(logging.Filter):
-        def filter(self, logrecord):
-            return "actorAddress" not in logrecord.__dict__
-
-    def configure_utc_formatter(*args, **kwargs):
-        formatter = logging.Formatter(fmt=kwargs["fmt"], datefmt=kwargs["datefmt"])
-        formatter.converter = time.gmtime
-        return formatter
-
-
     # TODO dm: Only stdout logging for the moment.
     actor_log_handler = {"class": "logging.StreamHandler", "stream": sys.stderr}
     actor_messages_handler = {"class": "logging.StreamHandler", "stream": sys.stderr}
 
     # actor_log_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actors.log" % log_dir}
     # actor_messages_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actor-messages.log" % log_dir}
-
 
     # actor_log_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
     # actor_messages_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
@@ -129,6 +132,8 @@ def bootstrap_actor_system(prefer_local_only=False, local_ip=None, coordinator_i
                                                "coordinator": coordinator,
                                                # just needed to determine whether to run benchmarks locally
                                                "ip": local_ip,
+                                               # Completely isolate Actor processes from each other.
+                                               #"Process Startup Method": "spawn",
                                                # Make the coordinator node the convention leader
                                                "Convention Address.IPv4": "%s:1900" % coordinator_ip
                                            })
