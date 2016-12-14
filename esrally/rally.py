@@ -111,7 +111,7 @@ def configure_logging(cfg):
         logging.root.removeHandler(handler)
 
     logging.root.addHandler(ch)
-    logging.getLogger("elasticsearch").setLevel(logging.WARN)
+    logging.getLogger("elasticsearch").setLevel(logging.WARNING)
 
 
 def parse_args():
@@ -390,7 +390,7 @@ def print_help_on_errors(cfg):
 
 def race(cfg):
     try:
-        actors = actor.bootstrap_actor_system(prefer_local_only=True)
+        actors = actor.bootstrap_actor_system(try_join=True)
     except RuntimeError as e:
         logger.exception("Could not bootstrap actor system.")
         if str(e) == "Unable to determine valid external socket address.":

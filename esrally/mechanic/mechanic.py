@@ -72,6 +72,7 @@ class MechanicActor(actor.RallyActor):
         super().__init__()
         self.mechanics = []
         self.race_control = None
+        logger.parent.setLevel(logging.INFO)
 
     # TODO #71: When we use this for multi-machine clusters, we need to implement a state-machine (wait for all nodes) and also need
     # TODO #71: more context (e.g. "Success" / "Failure" maybe won't cut it).
@@ -93,7 +94,7 @@ class MechanicActor(actor.RallyActor):
                         # start the actor system on the other host and is aware that the parameter for the actor system and the
                         # --target-hosts parameter need to match.
                         if ip == "localhost" or ip == "127.0.0.1":
-                            self.mechanics.append(self.createActor(LocalNodeMechanicActor, targetActorRequirements={"ip": "127.0.0.1"}))
+                            self.mechanics.append(self.createActor(LocalNodeMechanicActor, targetActorRequirements={"coordinator": True}))
                         else:
                             self.mechanics.append(self.createActor(RemoteNodeMechanicActor, targetActorRequirements={"ip": ip}))
                 for m in self.mechanics:
@@ -121,6 +122,14 @@ class MechanicActor(actor.RallyActor):
                 self.mechanics = []
                 # self terminate + slave nodes
                 self.send(self.myAddress, thespian.actors.ActorExitRequest())
+            elif isinstance(msg, thespian.actors.PoisonMessage):
+                # something went wrong with a child actor
+                if isinstance(msg.poisonMessage, StartEngine):
+                    raise exceptions.LaunchError("Could not start benchmark candidate (no child actor)")
+                else:
+                    logger.error("[%s] sent to a child actor has resulted in PoisonMessage" % str(msg.poisonMessage))
+                    raise exceptions.RallyError("Could not communicate with benchmark candidate (unknown reason)")
+
         except BaseException as e:
             # Is it ok to send the message always to the coordinator?
             self.send(self.race_control, Failure("Could not execute command", e))
@@ -136,6 +145,7 @@ class NodeMechanicActor(actor.RallyActor):
         self.metrics_store = None
         self.mechanic = None
         self.single_machine = single_machine
+        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         # at the moment, we implement all message handling blocking. This is not ideal but simple to get started with. Besides, the caller

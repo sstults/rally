@@ -4,8 +4,6 @@ import faulthandler
 import signal
 import time
 
-import os
-
 import thespian.actors
 
 from esrally import exceptions
@@ -18,7 +16,11 @@ class RallyActor(thespian.actors.Actor):
     def __init__(self):
         super().__init__()
         # see https://groups.google.com/d/msg/thespianpy/FntU9umtvhc/UYizXz8mDQAJ
-        logging.getLogger().setLevel(logging.WARNING)
+        # we have multiple "root" loggers. Force higher threshold for all of them
+        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger("root").setLevel(logging.INFO)
+        logger.parent.setLevel(logging.INFO)
+        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
         faulthandler.register(signal.SIGQUIT, file=sys.stderr)
 
     @staticmethod
@@ -111,9 +113,11 @@ def my_ip():
     return local_ips[0]
 
 
-def bootstrap_actor_system(prefer_local_only=False, local_ip=None, coordinator_ip=None, system_base="multiprocTCPBase"):
+def bootstrap_actor_system(try_join=False, prefer_local_only=False, local_ip=None, coordinator_ip=None, system_base="multiprocTCPBase"):
     try:
-        if prefer_local_only:
+        if try_join:
+            return thespian.actors.ActorSystem(system_base, logDefs=configure_actor_logging())
+        elif prefer_local_only:
             coordinator_ip = "127.0.0.1"
             local_ip = "127.0.0.1"
             coordinator = True

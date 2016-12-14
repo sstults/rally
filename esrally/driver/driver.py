@@ -138,6 +138,7 @@ class Driver(actor.RallyActor):
         self.progress_counter = 0
         self.quiet = False
         self.most_recent_sample_per_client = {}
+        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         try:
@@ -166,7 +167,7 @@ class Driver(actor.RallyActor):
                 for driver in self.drivers:
                     self.send(driver, thespian.actors.ActorExitRequest())
             else:
-                logger.info("Driver received unknown message [%s] (ignoring)." % (str(msg)))
+                logger.debug("Driver received unknown message [%s] (ignoring)." % (str(msg)))
         except BaseException as e:
             logger.exception("Main driver encountered a fatal exception. Shutting down.")
             self.metrics_store.close()
@@ -332,6 +333,7 @@ class LoadGenerator(actor.RallyActor):
         self.executor_future = None
         self.sampler = None
         self.start_driving = False
+        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         try:

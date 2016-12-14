@@ -295,6 +295,8 @@ def run(cfg):
     except exceptions.RallyError as e:
         # just pass on our own errors. It should be treated differently on top-level
         raise e
+    except KeyboardInterrupt:
+        console.info("User cancelled benchmark", logger=logger)
     except BaseException:
         tb = sys.exc_info()[2]
         raise exceptions.RallyError("This race ended with a fatal crash.").with_traceback(tb)
