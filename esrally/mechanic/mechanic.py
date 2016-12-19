@@ -70,9 +70,9 @@ class MechanicActor(actor.RallyActor):
     """
     def __init__(self):
         super().__init__()
+        actor.RallyActor.configure_logging(logger)
         self.mechanics = []
         self.race_control = None
-        logger.parent.setLevel(logging.INFO)
 
     # TODO #71: When we use this for multi-machine clusters, we need to implement a state-machine (wait for all nodes) and also need
     # TODO #71: more context (e.g. "Success" / "Failure" maybe won't cut it).
@@ -141,11 +141,11 @@ class NodeMechanicActor(actor.RallyActor):
     """
     def __init__(self, single_machine):
         super().__init__()
+        actor.RallyActor.configure_logging(logger)
         self.config = None
         self.metrics_store = None
         self.mechanic = None
         self.single_machine = single_machine
-        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         # at the moment, we implement all message handling blocking. This is not ideal but simple to get started with. Besides, the caller

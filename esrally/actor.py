@@ -1,11 +1,10 @@
-import sys
-import logging
 import faulthandler
+import logging
 import signal
+import sys
 import time
 
 import thespian.actors
-
 from esrally import exceptions
 from esrally.utils import console
 
@@ -17,11 +16,16 @@ class RallyActor(thespian.actors.Actor):
         super().__init__()
         # see https://groups.google.com/d/msg/thespianpy/FntU9umtvhc/UYizXz8mDQAJ
         # we have multiple "root" loggers. Force higher threshold for all of them
-        logging.getLogger().setLevel(logging.INFO)
-        logging.getLogger("root").setLevel(logging.INFO)
-        logger.parent.setLevel(logging.INFO)
-        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
+        #logging.getLogger().setLevel(logging.INFO)
+        #logging.getLogger("root").setLevel(logging.INFO)
+        #logger.parent.setLevel(logging.INFO)
         faulthandler.register(signal.SIGQUIT, file=sys.stderr)
+
+    @staticmethod
+    def configure_logging(actor_logger):
+        # configure each actor's root logger
+        actor_logger.parent.setLevel(logging.INFO)
+        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
 
     @staticmethod
     def actorSystemCapabilityCheck(capabilities, requirements):
@@ -37,10 +41,12 @@ class ActorLogFilter(logging.Filter):
     def filter(self, logrecord):
         return "actorAddress" in logrecord.__dict__
 
+
 # Defined on top-level to allow pickling
 class NotActorLogFilter(logging.Filter):
     def filter(self, logrecord):
         return "actorAddress" not in logrecord.__dict__
+
 
 # Defined on top-level to allow pickling
 def configure_utc_formatter(*args, **kwargs):
@@ -50,23 +56,14 @@ def configure_utc_formatter(*args, **kwargs):
 
 
 def configure_actor_logging():
-    # TODO dm: Only stdout logging for the moment.
-    actor_log_handler = {"class": "logging.StreamHandler", "stream": sys.stderr}
-    actor_messages_handler = {"class": "logging.StreamHandler", "stream": sys.stderr}
-
     # actor_log_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actors.log" % log_dir}
     # actor_messages_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actor-messages.log" % log_dir}
 
     # actor_log_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
     # actor_messages_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
 
-    actor_log_handler["formatter"] = "normal"
-    actor_log_handler["filters"] = ["notActorLog"]
-    actor_log_handler["level"] = logging.INFO
-
-    actor_messages_handler["formatter"] = "actor"
-    actor_messages_handler["filters"] = ["isActorLog"]
-    actor_messages_handler["level"] = logging.INFO
+    root_log_level = logging.INFO
+    es_log_level = logging.WARNING
 
     return {
         "version": 1,
@@ -91,24 +88,47 @@ def configure_actor_logging():
             }
         },
         "handlers": {
-            "h1": actor_log_handler,
-            "h2": actor_messages_handler
-        },
-        "loggers": {
-            "root": {
-                "handlers": ["h1", "h2"],
-                "level": logging.INFO
+            "rally_log_handler": {
+                "class": "logging.StreamHandler",
+                "stream": sys.stderr,
+                "formatter": "normal",
+                "filters": ["notActorLog"],
+                "level": root_log_level
+            },
+            "actor_log_handler": {
+                "class": "logging.StreamHandler",
+                "stream": sys.stderr,
+                "formatter": "actor",
+                "filters": ["isActorLog"],
+                "level": root_log_level
+            },
+            "es_log_handler": {
+                "class": "logging.StreamHandler",
+                "stream": sys.stderr,
+                "formatter": "normal",
+                "level": es_log_level
             }
         },
-        "disable_existing_loggers": True
+        "root": {
+            "handlers": ["rally_log_handler", "actor_log_handler"],
+            "level": root_log_level
+        },
+        "loggers": {
+            "elasticsearch": {
+                "handlers": ["es_log_handler"],
+                "level": es_log_level,
+                # don't let the root logger handle it again
+                "propagate": 0
+            }
+        }
     }
 
 
 def my_ip():
     import socket
-    #TODO dm: Handle cases without a network card
-    #TODO dm: Handle cases with more than one network card...
-    #TODO dm: Handle IPv6
+    # TODO dm: Handle cases without a network card
+    # TODO dm: Handle cases with more than one network card...
+    # TODO dm: Handle IPv6
     local_ips = [ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1]
     return local_ips[0]
 
@@ -136,8 +156,6 @@ def bootstrap_actor_system(try_join=False, prefer_local_only=False, local_ip=Non
                                                "coordinator": coordinator,
                                                # just needed to determine whether to run benchmarks locally
                                                "ip": local_ip,
-                                               # Completely isolate Actor processes from each other.
-                                               #"Process Startup Method": "spawn",
                                                # Make the coordinator node the convention leader
                                                "Convention Address.IPv4": "%s:1900" % coordinator_ip
                                            })

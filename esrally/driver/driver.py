@@ -120,6 +120,7 @@ class Driver(actor.RallyActor):
 
     def __init__(self):
         super().__init__()
+        actor.RallyActor.configure_logging(logger)
         self.config = None
         # Elasticsearch client
         self.es = None
@@ -138,7 +139,6 @@ class Driver(actor.RallyActor):
         self.progress_counter = 0
         self.quiet = False
         self.most_recent_sample_per_client = {}
-        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         try:
@@ -321,6 +321,7 @@ class LoadGenerator(actor.RallyActor):
 
     def __init__(self):
         super().__init__()
+        actor.RallyActor.configure_logging(logger)
         self.master = None
         self.client_id = None
         self.es = None
@@ -333,7 +334,6 @@ class LoadGenerator(actor.RallyActor):
         self.executor_future = None
         self.sampler = None
         self.start_driving = False
-        logger.parent.setLevel(logging.INFO)
 
     def receiveMessage(self, msg, sender):
         try:
