@@ -9,8 +9,6 @@ import zlib
 from enum import Enum, IntEnum
 
 import certifi
-import elasticsearch
-import elasticsearch.helpers
 import tabulate
 from esrally import time, exceptions
 from esrally.utils import console
@@ -40,6 +38,7 @@ class EsClient:
         return self.guarded(self._client.indices.refresh, index=index)
 
     def bulk_index(self, index, doc_type, items):
+        import elasticsearch.helpers
         self.guarded(elasticsearch.helpers.bulk, self._client, items, index=index, doc_type=doc_type)
 
     def index(self, index, doc_type, item):
@@ -49,6 +48,7 @@ class EsClient:
         return self.guarded(self._client.search, index=index, doc_type=doc_type, body=body)
 
     def guarded(self, target, *args, **kwargs):
+        import elasticsearch
         try:
             return target(*args, **kwargs)
         except elasticsearch.exceptions.ConnectionError:
@@ -75,6 +75,7 @@ class EsClientFactory:
         else:
             auth = None
         logger.info("Creating connection to metrics store at %s:%s" % (host, port))
+        import elasticsearch
         self._client = elasticsearch.Elasticsearch(hosts=[{"host": host, "port": port}],
                                                    use_ssl=secure, http_auth=auth, verify_certs=True, ca_certs=certifi.where())
 

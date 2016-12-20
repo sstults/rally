@@ -6,7 +6,6 @@ import queue
 import socket
 import time
 
-import elasticsearch
 import thespian.actors
 from esrally import actor, exceptions, metrics, track, client, PROGRAM_NAME
 from esrally.driver import runner
@@ -522,6 +521,7 @@ def wait_for_status(es, expected_cluster_status):
 
 
 def _do_wait(es, expected_cluster_status):
+    import elasticsearch
     reached_cluster_status = None
     relocating_shards = -1
     major, minor, patch, suffix = versions.components(es.info()["version"]["number"])
@@ -660,6 +660,7 @@ def execute_single(runner, es, params):
 
     :return: a triple of: total number of operations, unit of operations, a dict of request meta data (may be None).
     """
+    import elasticsearch
     try:
         with runner:
             return_value = runner(es, params)

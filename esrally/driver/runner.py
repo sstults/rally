@@ -1,8 +1,6 @@
 import types
 import logging
 
-import elasticsearch
-
 from esrally import exceptions, track
 
 logger = logging.getLogger("rally.driver")
@@ -115,6 +113,7 @@ class ForceMerge(Runner):
 
     def __call__(self, es, params):
         logger.info("Force merging all indices.")
+        import elasticsearch
         try:
             es.indices.forcemerge(index="_all")
         except elasticsearch.TransportError as e:

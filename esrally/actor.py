@@ -10,22 +10,22 @@ from esrally.utils import console
 
 logger = logging.getLogger("rally.actor")
 
+root_log_level = logging.INFO
+es_log_level = logging.WARNING
+
 
 class RallyActor(thespian.actors.Actor):
     def __init__(self):
         super().__init__()
-        # see https://groups.google.com/d/msg/thespianpy/FntU9umtvhc/UYizXz8mDQAJ
-        # we have multiple "root" loggers. Force higher threshold for all of them
-        #logging.getLogger().setLevel(logging.INFO)
-        #logging.getLogger("root").setLevel(logging.INFO)
-        #logger.parent.setLevel(logging.INFO)
+        # allow to see a thread-dump on SIGQUIT
         faulthandler.register(signal.SIGQUIT, file=sys.stderr)
 
     @staticmethod
     def configure_logging(actor_logger):
         # configure each actor's root logger
-        actor_logger.parent.setLevel(logging.INFO)
-        logging.getLogger("elasticsearch").setLevel(logging.WARNING)
+        actor_logger.parent.setLevel(root_log_level)
+        # Also ensure that the elasticsearch logger is properly configured
+        logging.getLogger("elasticsearch").setLevel(es_log_level)
 
     @staticmethod
     def actorSystemCapabilityCheck(capabilities, requirements):
@@ -61,9 +61,6 @@ def configure_actor_logging():
 
     # actor_log_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
     # actor_messages_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
-
-    root_log_level = logging.INFO
-    es_log_level = logging.WARNING
 
     return {
         "version": 1,
@@ -101,12 +98,6 @@ def configure_actor_logging():
                 "formatter": "actor",
                 "filters": ["isActorLog"],
                 "level": root_log_level
-            },
-            "es_log_handler": {
-                "class": "logging.StreamHandler",
-                "stream": sys.stderr,
-                "formatter": "normal",
-                "level": es_log_level
             }
         },
         "root": {
@@ -115,7 +106,7 @@ def configure_actor_logging():
         },
         "loggers": {
             "elasticsearch": {
-                "handlers": ["es_log_handler"],
+                "handlers": ["rally_log_handler"],
                 "level": es_log_level,
                 # don't let the root logger handle it again
                 "propagate": 0
