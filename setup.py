@@ -55,7 +55,10 @@ setup(name="esrally",
       test_suite="tests",
       tests_require=tests_require,
       entry_points={
-          "console_scripts": ["esrally=esrally.rally:main"],
+          "console_scripts": [
+              "esrally=esrally.rally:main",
+              "esrallyd=esrally.rallyd:main"
+          ],
       },
       classifiers=[
           "Topic :: System :: Benchmark",

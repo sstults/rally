@@ -2,7 +2,8 @@ import logging
 
 import thespian.actors
 
-from esrally import actor, paths, config, metrics, exceptions
+from esrally import actor, paths, config, metrics, exceptions, time
+from esrally.utils import console, io
 from esrally.mechanic import supplier, provisioner, launcher
 
 logger = logging.getLogger("rally.mechanic")
@@ -96,6 +97,18 @@ class MechanicActor(actor.RallyActor):
                         if ip == "localhost" or ip == "127.0.0.1":
                             self.mechanics.append(self.createActor(LocalNodeMechanicActor, targetActorRequirements={"coordinator": True}))
                         else:
+                            if not msg.cfg.opts("system", "remote.benchmarking.supported"):
+                                logger.error("User tried to benchmark against %s but no external Rally daemon has been started." % hosts)
+                                raise exceptions.SystemSetupError("To benchmark remote hosts (e.g. %s) you need to start the Rally daemon "
+                                                                  "on each machine including this one." % ip)
+                            already_running = actor.actor_system_already_running(ip=ip)
+                            if not already_running:
+                                console.println("Waiting for Rally daemon on [%s] " % ip, end="", flush=True)
+                            while not actor.actor_system_already_running(ip=ip):
+                                console.println(".", end="", flush=True)
+                                time.sleep(3)
+                            if not already_running:
+                                console.println(" [OK]")
                             self.mechanics.append(self.createActor(RemoteNodeMechanicActor, targetActorRequirements={"ip": ip}))
                 for m in self.mechanics:
                     self.send(m, msg)
@@ -125,7 +138,7 @@ class MechanicActor(actor.RallyActor):
             elif isinstance(msg, thespian.actors.PoisonMessage):
                 # something went wrong with a child actor
                 if isinstance(msg.poisonMessage, StartEngine):
-                    raise exceptions.LaunchError("Could not start benchmark candidate (no child actor)")
+                    raise exceptions.LaunchError("Could not start benchmark candidate. Are Rally daemons on all targeted machines running?")
                 else:
                     logger.error("[%s] sent to a child actor has resulted in PoisonMessage" % str(msg.poisonMessage))
                     raise exceptions.RallyError("Could not communicate with benchmark candidate (unknown reason)")
@@ -216,6 +229,12 @@ def create(cfg, metrics_store, single_machine=True, sources=False, build=False, 
     track_name = cfg.opts("track", "track.name")
     challenge_name = cfg.opts("track", "challenge.name")
     race_paths = paths.Paths(cfg)
+
+    # TODO dm: Simplify
+    race_log_dir = race_paths.log_root()
+    io.ensure_dir(race_log_dir)
+    cfg.add(config.Scope.application, "system", "log.dir", race_log_dir)
+
     challenge_root_path = race_paths.challenge_root(track_name, challenge_name)
     challenge_log_path = race_paths.challenge_logs(track_name, challenge_name)
     # TODO dm: remove key "provisioning", "local.install.dir" from config (is defined in config file -> migration)

@@ -4,8 +4,7 @@ import shutil
 import sys
 
 import tabulate
-import thespian.actors
-from esrally import config, exceptions, paths, track, driver, reporter, metrics, time, PROGRAM_NAME
+from esrally import actor, config, exceptions, paths, track, driver, reporter, metrics, time, PROGRAM_NAME
 from esrally.mechanic import mechanic
 from esrally.utils import console, io, convert
 
@@ -40,10 +39,6 @@ class Pipeline:
         self.stable = stable
         pipelines[name] = self
 
-    # def __del__(self):
-    #     if pipelines is not None:
-    #         pipelines.pop(self.name, default=None)
-
     def __call__(self, cfg):
         self.target(cfg)
 
@@ -65,7 +60,8 @@ class Benchmark:
         self.track = None
 
     def setup(self):
-        self.actor_system = thespian.actors.ActorSystem()
+        # at this point an actor system has to run and we should only join
+        self.actor_system = actor.bootstrap_actor_system(try_join=True)
         self.mechanic = self.actor_system.createActor(mechanic.MechanicActor)
         self.main_driver = self.actor_system.createActor(driver.Driver, targetActorRequirements={"coordinator": True})
         result = self.actor_system.ask(self.mechanic,

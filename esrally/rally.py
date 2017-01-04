@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import logging
+import logging.handlers
 import os
 import shutil
 import sys
@@ -73,30 +74,20 @@ def pre_configure_logging():
     logging.basicConfig(level=logging.INFO)
 
 
-def log_file_path(cfg):
-    log_dir = paths.Paths(cfg).log_root()
-    node_name = cfg.opts("system", "node.name", mandatory=False)
-    if node_name:
-        return "%s/rally_out_%s.log" % (log_dir, node_name)
-    else:
-        return "%s/rally_out.log" % log_dir
+def application_log_file_path():
+    log_dir = "%s/.rally/logs" % os.path.expanduser("~")
+    return "%s/rally_out.log" % log_dir
 
 
 def configure_logging(cfg):
-    # Even if we don't log to a file, other parts of the application rely on this path to exist -> enforce
-    log_file = log_file_path(cfg)
-    log_dir = os.path.dirname(log_file)
-    io.ensure_dir(log_dir)
-    cfg.add(config.Scope.application, "system", "log.dir", log_dir)
-
     logging_output = cfg.opts("system", "logging.output")
 
     if logging_output == "file":
+        log_file = application_log_file_path()
+        log_dir = os.path.dirname(log_file)
+        io.ensure_dir(log_dir)
         console.info("Writing logs to %s" % log_file)
-        # there is an old log file lying around -> backup
-        if os.path.exists(log_file):
-            os.rename(log_file, "%s-bak-%d.log" % (log_file, int(os.path.getctime(log_file))))
-        ch = logging.FileHandler(filename=log_file, mode="a")
+        ch = logging.handlers.RotatingFileHandler(filename=log_file, maxBytes=convert.mb_to_bytes(20), backupCount=5, encoding="UTF-8")
     else:
         ch = logging.StreamHandler(stream=sys.stdout)
 
@@ -389,8 +380,11 @@ def print_help_on_errors(cfg):
 
 
 def race(cfg):
+    already_running = actor.actor_system_already_running()
     try:
-        actors = actor.bootstrap_actor_system(try_join=True)
+        actors = actor.bootstrap_actor_system(try_join=already_running, prefer_local_only=not already_running)
+        # We can only support remote benchmarks if we have a dedicated daemon that is not only bound to 127.0.0.1
+        cfg.add(config.Scope.application, "system", "remote.benchmarking.supported", already_running)
     except RuntimeError as e:
         logger.exception("Could not bootstrap actor system.")
         if str(e) == "Unable to determine valid external socket address.":
@@ -401,28 +395,29 @@ def race(cfg):
     try:
         racecontrol.run(cfg)
     finally:
-        shutdown_complete = False
-        times_interrupted = 0
-        while not shutdown_complete and times_interrupted < 2:
-            try:
-                logger.info("Attempting to shutdown internal actor system.")
-                actors.shutdown()
-
-                shutdown_complete = True
-                logger.info("Shutdown completed.")
-            except KeyboardInterrupt:
-                times_interrupted += 1
-                logger.warning("User interrupted shutdown of internal actor system.")
-                console.info("Please wait a moment for Rally's internal components to shutdown.")
-        if not shutdown_complete and times_interrupted > 0:
-            logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
-            console.println("")
-            console.warn("Terminating now at the risk of leaving child processes behind.")
-            console.println("")
-            console.warn("The next race may fail due to an unclean shutdown.")
-            console.println("")
-            console.println(SKULL)
-            console.println("")
+        # We only shutdown the actor system if it was not already running before
+        if not already_running:
+            shutdown_complete = False
+            times_interrupted = 0
+            while not shutdown_complete and times_interrupted < 2:
+                try:
+                    logger.info("Attempting to shutdown internal actor system.")
+                    actors.shutdown()
+                    shutdown_complete = True
+                    logger.info("Shutdown completed.")
+                except KeyboardInterrupt:
+                    times_interrupted += 1
+                    logger.warning("User interrupted shutdown of internal actor system.")
+                    console.info("Please wait a moment for Rally's internal components to shutdown.")
+            if not shutdown_complete and times_interrupted > 0:
+                logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times." % times_interrupted)
+                console.println("")
+                console.warn("Terminating now at the risk of leaving child processes behind.")
+                console.println("")
+                console.warn("The next race may fail due to an unclean shutdown.")
+                console.println("")
+                console.println(SKULL)
+                console.println("")
 
 
 def dispatch_sub_command(cfg, sub_command):

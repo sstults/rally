@@ -3,10 +3,12 @@ import logging
 import signal
 import sys
 import time
+import os
 
 import thespian.actors
+import thespian.system.messages.status
 from esrally import exceptions
-from esrally.utils import console
+from esrally.utils import console, convert, io
 
 logger = logging.getLogger("rally.actor")
 
@@ -56,8 +58,8 @@ def configure_utc_formatter(*args, **kwargs):
 
 
 def configure_actor_logging():
-    # actor_log_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actors.log" % log_dir}
-    # actor_messages_handler = {"class": "logging.FileHandler", "filename": "%s/rally-actor-messages.log" % log_dir}
+    log_dir = "%s/.rally/logs" % os.path.expanduser("~")
+    io.ensure_dir(log_dir)
 
     # actor_log_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
     # actor_messages_handler = {"class": "logging.handlers.SysLogHandler", "address": "/var/run/syslog"}
@@ -86,15 +88,25 @@ def configure_actor_logging():
         },
         "handlers": {
             "rally_log_handler": {
-                "class": "logging.StreamHandler",
-                "stream": sys.stderr,
+                #"class": "logging.StreamHandler",
+                #"stream": sys.stderr,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": "%s/rally-actors.log" % log_dir,
+                "maxBytes": convert.mb_to_bytes(20),
+                "backupCount": 5,
+                "encoding": "UTF-8",
                 "formatter": "normal",
                 "filters": ["notActorLog"],
                 "level": root_log_level
             },
             "actor_log_handler": {
-                "class": "logging.StreamHandler",
-                "stream": sys.stderr,
+                #"class": "logging.StreamHandler",
+                #"stream": sys.stderr,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": "%s/rally-actor-messages.log" % log_dir,
+                "maxBytes": convert.mb_to_bytes(20),
+                "backupCount": 5,
+                "encoding": "UTF-8",
                 "formatter": "actor",
                 "filters": ["isActorLog"],
                 "level": root_log_level
@@ -115,13 +127,20 @@ def configure_actor_logging():
     }
 
 
-def my_ip():
+def actor_system_already_running(ip="127.0.0.1"):
+    """
+    Determines whether an actor system is already running by opening a socket connection.
+
+    Note: It may be possible that another system is running on the same port.
+    """
     import socket
-    # TODO dm: Handle cases without a network card
-    # TODO dm: Handle cases with more than one network card...
-    # TODO dm: Handle IPv6
-    local_ips = [ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1]
-    return local_ips[0]
+    s = socket.socket()
+    try:
+        s.connect((ip, 1900))
+        s.close()
+        return True
+    except Exception:
+        return False
 
 
 def bootstrap_actor_system(try_join=False, prefer_local_only=False, local_ip=None, coordinator_ip=None, system_base="multiprocTCPBase"):
